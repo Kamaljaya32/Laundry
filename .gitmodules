@@ -1,0 +1,3 @@
+[submodule "config/private-config"]
+	path = config/private-config
+	url = https://github.com/Kamaljaya32/rpl-ai-firebaseconfig.git
