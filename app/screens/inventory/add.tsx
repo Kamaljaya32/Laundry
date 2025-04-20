@@ -11,7 +11,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { useRouter } from 'expo-router';
-import { auth, db } from '../../../config/firebaseConfig';
+import { auth, db } from '../../../config/private-config/config/firebaseConfig'
 import { inventoryAddStyles } from './styles/inventoryAddStyles';
 
 export default function InventoryAddScreen() {

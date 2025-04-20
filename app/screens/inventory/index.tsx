@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { auth, db } from '../../../config/firebaseConfig';
+import { auth, db } from '../../../config/private-config/config/firebaseConfig'
 import { useRouter } from 'expo-router';
 import { inventoryStyles } from './styles/inventoryStyles';
 

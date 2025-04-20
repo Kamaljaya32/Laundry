@@ -11,7 +11,7 @@ import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { db } from '../../../../config/firebaseConfig';
+import { db } from '../../../../config/private-config/config/firebaseConfig'
 import { inventoryEditStyles } from '../styles/inventoryEditStyles';
 
 export default function InventoryEditScreen() {

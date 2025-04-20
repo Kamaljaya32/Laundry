@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Dimensions } from 'react-native';
 import { collection, onSnapshot } from 'firebase/firestore';
-import { db } from '../../config/firebaseConfig';
+import { db } from '../../config/private-config/config/firebaseConfig'
 import { BarChart } from 'react-native-chart-kit';
 
 interface MonthlyStat {

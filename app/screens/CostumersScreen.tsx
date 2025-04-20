@@ -3,7 +3,7 @@ import {
   View, Text, TextInput, StyleSheet, FlatList, TouchableOpacity,
 } from 'react-native';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
-import { db } from '../../config/firebaseConfig';
+import { db } from '../../config/private-config/config/firebaseConfig'
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 interface Customer {
