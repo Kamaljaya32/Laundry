@@ -77,23 +77,27 @@ export default function CustomersScreen() {
     );
 
     try {
-      const unsub = onSnapshot(q, (snap) => {
-        const list = snap.docs.map(
-          (d) =>
-            ({
-              id: d.id,
-              ...(d.data() as Omit<Customer, "id">),
-            } as Customer)
-        );
-        // Sort data pada aplikasi, bukan di query Firestore
-        list.sort((a, b) => a.name.localeCompare(b.name));
-        setCustomers(list);
-        setLoadingData(false);
-      }, (error) => {
-        console.error("Snapshot listener error:", error);
-        // SOLUSI 2: Jika snapshot gagal, gunakan getDocs sebagai fallback
-        fetchCustomersOnce(currentUser.uid);
-      });
+      const unsub = onSnapshot(
+        q,
+        (snap) => {
+          const list = snap.docs.map(
+            (d) =>
+              ({
+                id: d.id,
+                ...(d.data() as Omit<Customer, "id">),
+              } as Customer)
+          );
+          // Sort data pada aplikasi, bukan di query Firestore
+          list.sort((a, b) => a.name.localeCompare(b.name));
+          setCustomers(list);
+          setLoadingData(false);
+        },
+        (error) => {
+          console.error("Snapshot listener error:", error);
+          // SOLUSI 2: Jika snapshot gagal, gunakan getDocs sebagai fallback
+          fetchCustomersOnce(currentUser.uid);
+        }
+      );
 
       return unsub;
     } catch (error) {
@@ -110,15 +114,16 @@ export default function CustomersScreen() {
         collection(db, "customers"),
         where("ownerId", "==", userId)
       );
-      
+
       const querySnapshot = await getDocs(q);
       const list = querySnapshot.docs.map(
-        (d) => ({
-          id: d.id,
-          ...(d.data() as Omit<Customer, "id">),
-        } as Customer)
+        (d) =>
+          ({
+            id: d.id,
+            ...(d.data() as Omit<Customer, "id">),
+          } as Customer)
       );
-      
+
       // Sort data pada aplikasi
       list.sort((a, b) => a.name.localeCompare(b.name));
       setCustomers(list);
@@ -170,13 +175,15 @@ export default function CustomersScreen() {
       // Reset form and close modal
       setNewCustomer({ name: "", phone: "" });
       setModalVisible(false);
-      
+
       // Alternatif: Refresh data secara manual jika listener tidak berfungsi
       await fetchCustomersOnce(currentUser.uid);
-      
     } catch (error) {
       console.error("Error adding customer: ", error);
-      Alert.alert("Error", "Gagal menambahkan pelanggan. Periksa izin Firebase Anda.");
+      Alert.alert(
+        "Error",
+        "Gagal menambahkan pelanggan. Periksa izin Firebase Anda."
+      );
     } finally {
       setLoading(false);
     }
@@ -184,102 +191,107 @@ export default function CustomersScreen() {
 
   // Function to handle edit using simple Alert
   const handleEditCustomer = (customer: Customer) => {
-    Alert.alert(
-      "Edit Pelanggan",
-      "Pilih data yang ingin diedit:",
-      [
-        {
-          text: "Batal",
-          style: "cancel"
-        },
-        {
-          text: "Edit Nama",
-          onPress: () => {
-            setTimeout(() => {
-              Alert.prompt(
-                "Edit Nama",
-                "Masukkan nama baru:",
-                [
-                  {
-                    text: "Batal",
-                    style: "cancel"
-                  },
-                  {
-                    text: "Simpan",
-                    onPress: async (newName) => {
-                      if (newName && newName.trim() !== "") {
-                        try {
-                          const customerRef = doc(db, "customers", customer.id);
-                          await updateDoc(customerRef, {
-                            name: newName.trim()
-                          });
-                          Alert.alert("Sukses", "Nama pelanggan berhasil diperbarui");
-                          
-                          // Refresh data jika perlu
-                          if (auth.currentUser) {
-                            fetchCustomersOnce(auth.currentUser.uid);
-                          }
-                        } catch (error) {
-                          console.error("Error updating name:", error);
-                          Alert.alert("Error", "Gagal memperbarui nama pelanggan");
+    Alert.alert("Edit Pelanggan", "Pilih data yang ingin diedit:", [
+      {
+        text: "Batal",
+        style: "cancel",
+      },
+      {
+        text: "Edit Nama",
+        onPress: () => {
+          setTimeout(() => {
+            Alert.prompt(
+              "Edit Nama",
+              "Masukkan nama baru:",
+              [
+                {
+                  text: "Batal",
+                  style: "cancel",
+                },
+                {
+                  text: "Simpan",
+                  onPress: async (newName) => {
+                    if (newName && newName.trim() !== "") {
+                      try {
+                        const customerRef = doc(db, "customers", customer.id);
+                        await updateDoc(customerRef, {
+                          name: newName.trim(),
+                        });
+                        Alert.alert(
+                          "Sukses",
+                          "Nama pelanggan berhasil diperbarui"
+                        );
+
+                        // Refresh data jika perlu
+                        if (auth.currentUser) {
+                          fetchCustomersOnce(auth.currentUser.uid);
                         }
-                      } else {
-                        Alert.alert("Error", "Nama tidak boleh kosong");
+                      } catch (error) {
+                        console.error("Error updating name:", error);
+                        Alert.alert(
+                          "Error",
+                          "Gagal memperbarui nama pelanggan"
+                        );
                       }
+                    } else {
+                      Alert.alert("Error", "Nama tidak boleh kosong");
                     }
-                  }
-                ],
-                "plain-text",
-                customer.name
-              );
-            }, 300);
-          }
-        },
-        {
-          text: "Edit No. Telp",
-          onPress: () => {
-            setTimeout(() => {
-              Alert.prompt(
-                "Edit Nomor Telepon",
-                "Masukkan nomor telepon baru:",
-                [
-                  {
-                    text: "Batal",
-                    style: "cancel"
                   },
-                  {
-                    text: "Simpan",
-                    onPress: async (newPhone) => {
-                      if (newPhone && newPhone.trim() !== "") {
-                        try {
-                          const customerRef = doc(db, "customers", customer.id);
-                          await updateDoc(customerRef, {
-                            phone: newPhone.trim()
-                          });
-                          Alert.alert("Sukses", "Nomor telepon berhasil diperbarui");
-                          
-                          // Refresh data jika perlu
-                          if (auth.currentUser) {
-                            fetchCustomersOnce(auth.currentUser.uid);
-                          }
-                        } catch (error) {
-                          console.error("Error updating phone:", error);
-                          Alert.alert("Error", "Gagal memperbarui nomor telepon");
+                },
+              ],
+              "plain-text",
+              customer.name
+            );
+          }, 300);
+        },
+      },
+      {
+        text: "Edit No. Telp",
+        onPress: () => {
+          setTimeout(() => {
+            Alert.prompt(
+              "Edit Nomor Telepon",
+              "Masukkan nomor telepon baru:",
+              [
+                {
+                  text: "Batal",
+                  style: "cancel",
+                },
+                {
+                  text: "Simpan",
+                  onPress: async (newPhone) => {
+                    if (newPhone && newPhone.trim() !== "") {
+                      try {
+                        const customerRef = doc(db, "customers", customer.id);
+                        await updateDoc(customerRef, {
+                          phone: newPhone.trim(),
+                        });
+                        Alert.alert(
+                          "Sukses",
+                          "Nomor telepon berhasil diperbarui"
+                        );
+
+                        // Refresh data jika perlu
+                        if (auth.currentUser) {
+                          fetchCustomersOnce(auth.currentUser.uid);
                         }
-                      } else {
-                        Alert.alert("Error", "Nomor telepon tidak boleh kosong");
+                      } catch (error) {
+                        console.error("Error updating phone:", error);
+                        Alert.alert("Error", "Gagal memperbarui nomor telepon");
                       }
+                    } else {
+                      Alert.alert("Error", "Nomor telepon tidak boleh kosong");
                     }
-                  }
-                ],
-                "plain-text",
-                customer.phone
-              );
-            }, 300);
-          }
-        }
-      ]
-    );
+                  },
+                },
+              ],
+              "plain-text",
+              customer.phone
+            );
+          }, 300);
+        },
+      },
+    ]);
   };
 
   // Function to handle delete customer
@@ -299,7 +311,7 @@ export default function CustomersScreen() {
             try {
               await deleteDoc(doc(db, "customers", customer.id));
               Alert.alert("Sukses", "Pelanggan berhasil dihapus");
-              
+
               // Refresh data secara manual jika listener tidak berfungsi
               if (auth.currentUser) {
                 fetchCustomersOnce(auth.currentUser.uid);
@@ -346,7 +358,7 @@ export default function CustomersScreen() {
           />
           <Text style={styles.badgeTxt}>{item.totalOrders} Order</Text>
         </View>
-        
+
         <TouchableOpacity
           style={styles.badge}
           onPress={() => showCustomerDetail(item)}
@@ -359,7 +371,7 @@ export default function CustomersScreen() {
           />
           <Text style={styles.badgeTxt}>Detail</Text>
         </TouchableOpacity>
-        
+
         <TouchableOpacity
           style={[styles.badge, styles.editBadge]}
           onPress={() => handleEditCustomer(item)}
@@ -372,7 +384,7 @@ export default function CustomersScreen() {
           />
           <Text style={styles.editBadgeTxt}>Edit</Text>
         </TouchableOpacity>
-        
+
         <TouchableOpacity
           style={[styles.badge, styles.deleteBadge]}
           onPress={() => handleDeleteCustomer(item)}
@@ -471,7 +483,9 @@ export default function CustomersScreen() {
         <View style={styles.emptyContainer}>
           <Ionicons name="people-outline" size={50} color="#ccc" />
           <Text style={styles.emptyText}>Belum ada data pelanggan</Text>
-          <Text style={styles.emptySubText}>Tambahkan pelanggan dengan menekan tombol + di bawah</Text>
+          <Text style={styles.emptySubText}>
+            Tambahkan Pelanggan dengan menekan tombol + di bawah
+          </Text>
         </View>
       ) : (
         <FlatList
@@ -504,29 +518,29 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   loadingText: {
-    color: '#666',
+    color: "#666",
     fontSize: 16,
   },
   emptyContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   emptyText: {
     marginTop: 16,
     fontSize: 18,
-    fontWeight: '600',
-    color: '#666',
+    fontWeight: "600",
+    color: "#666",
   },
   emptySubText: {
     marginTop: 8,
     fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
+    color: "#999",
+    textAlign: "center",
     paddingHorizontal: 32,
   },
   searchBox: {
@@ -538,7 +552,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     elevation: 1,
     marginBottom: 12,
-    marginTop:30,
+    marginTop: 30,
   },
   card: {
     backgroundColor: "#fff",

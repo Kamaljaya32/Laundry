@@ -35,7 +35,7 @@ const HomeScreen = () => {
       })) as LaundryItem[];
       setLaundryList(data);
     } catch (error) {
-      console.error("Error fetching laundry data: ", error);
+      console.error("Error fetching laundry data ", error);
     } finally {
       setLoading(false);
     }
