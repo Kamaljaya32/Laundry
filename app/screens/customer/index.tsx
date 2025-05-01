@@ -19,7 +19,6 @@ export default function CustomersScreen() {
   const [search, setSearch] = useState('');
   const router = useRouter();
 
-  /* realtime */
   useEffect(() => {
     const u = auth.currentUser;
     if (!u) return;
