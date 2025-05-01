@@ -420,7 +420,7 @@ export default function LaundryFormScreen() {
     <View style={{ flex: 1, backgroundColor: '#F6FCFF' }}>
       {/* step indicator */}
       <View style={styles.stepRow}>
-        {['washer', 'wallet', 'checkmark-done'].map((ic, i) => (
+        {['bag-add-outline', 'wallet', 'checkmark-done'].map((ic, i) => (
           <View key={ic} style={styles.stepItem}>
             <Ionicons name={ic as any} size={24} color={step >= i ? '#007AFF' : '#bbb'} />
             <Text style={[styles.stepLabel, step >= i && { color: '#007AFF' }]}>
@@ -461,7 +461,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 12,
     marginBottom: 12,
-    color: '#000',
+    color: '#000'
   },
   readonlyInput: {
     backgroundColor: '#f2f2f2',

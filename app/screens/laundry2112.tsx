@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   ScrollView,
 } from "react-native";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from '@expo/vector-icons';
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 
 interface LaundryItem {
@@ -60,7 +60,7 @@ export default function LaundryFormScreen() {
 
   const renderStepIndicator = () => {
     const labels = ["Laundry", "Bayar", "Review"];
-    const icons = ["washer", "wallet", "checkmark-done"];
+    const icons = ["bag-add-outline", "wallet", "checkmark-done"];
     return (
       <View style={styles.stepRow}>
         {labels.map((label, i) => (
