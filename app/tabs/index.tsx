@@ -5,7 +5,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import MDI from '@expo/vector-icons/MaterialCommunityIcons';
 
 import HomeScreen from '../screens/HomeScreen';
-import CustomersScreen from '../screens/CostumersScreen';
+import CustomersScreen from '../screens/customer';
 import InventoryScreen from '../screens/inventory';
 import ReportsScreen from '../screens/ReportsScreen';
 import LaundryFormScreen from '../screens/LaundryFormScreen';
