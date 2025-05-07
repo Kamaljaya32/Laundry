@@ -22,6 +22,8 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '../../config/private-config/config/firebaseConfig';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 
 type Step = 0 | 1 | 2;
 
@@ -39,90 +41,93 @@ interface CustomerInfo {
 }
 
 export default function LaundryFormScreen() {
-  /* ─────────────── step & order ─────────────── */
+  /* ───────────── step & order ───────────── */
   const [step, setStep] = useState<Step>(0);
   const [orderId, setOrderId] = useState<number | null>(null);
 
-  /* ─────────────── customer ─────────────── */
+  /* ───────────── customer ───────────── */
   const [phoneText, setPhoneText] = useState('');
   const [customers, setCustomers] = useState<CustomerInfo[]>([]);
   const [selectedCust, setSelectedCust] = useState<CustomerInfo | null>(null);
   const phoneInputRef = useRef<TextInput>(null);
 
-  /* ─────────────── tanggal ─────────────── */
+  /* ───────────── tanggal ───────────── */
   const [inDate, setInDate] = useState<Date | null>(null);
   const [outDate, setOutDate] = useState<Date | null>(null);
-  const [datePicker, setDatePicker] = useState({
-    open: false,
-    which: 'in' as 'in' | 'out',
-  });
+  const [datePicker, setDatePicker] = useState({ open: false, which: 'in' as 'in' | 'out' });
 
-  /* ─────────────── layanan ─────────────── */
+  /* ───────────── layanan ───────────── */
   const [items, setItems] = useState<LaundryItem[]>([
     { service: '', weight: '', price: '', note: '' },
   ]);
+  const [serviceOptions, setServiceOptions] = useState<string[]>([]);
+  const [openSvcIdx, setOpenSvcIdx] = useState<number | null>(null); // indeks card yg autocomplete terbuka
 
-  /* ─────────────── pembayaran ─────────────── */
+  /* ───────────── pembayaran ───────────── */
   const [pay, setPay] = useState<'cash' | 'qris' | 'transfer'>('qris');
 
-  /* ─────────────── ambil customers realtime ─────────────── */
+  /* ───────────── ambil customers realtime ───────────── */
   useEffect(() => {
     const u = auth.currentUser;
     if (!u) return;
     const q = query(collection(db, 'customers'), where('ownerId', '==', u.uid));
-    const unsub = onSnapshot(q, (snap) =>
-      setCustomers(
-        snap.docs.map(
-          (d) => ({ id: d.id, ...d.data() } as unknown as CustomerInfo)
-        )
-      )
+    const unsub = onSnapshot(q, snap =>
+      setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() } as CustomerInfo))),
     );
     return () => unsub();
   }, []);
 
-  const filteredCust = customers.filter((c) =>
-    c.phone.includes(phoneText.trim())
-  );
+  /* ───────────── ambil list layanan ───────────── */
+  useEffect(() => {
+    const colRef = collection(db, 'list_laundry');
+    const unsub = onSnapshot(colRef, snap =>
+      setServiceOptions(
+        snap.docs.flatMap(d => {
+          const data: any = d.data();
+          if (Array.isArray(data.list)) return data.list as string[];
+          if (typeof data.list === 'string') return [data.list];
+          if (typeof data.name === 'string') return [data.name];
+          return [];
+        }),
+      ),
+    );
+    return () => unsub();
+  }, []);
 
-  /* ─────────────── helpers ─────────────── */
+  const filteredCust = customers.filter(c => c.phone.includes(phoneText.trim()));
+
+  /* ───────────── helpers ───────────── */
   const totalHarga = items.reduce(
-    (s, i) =>
-      s + parseFloat(i.price || '0') * parseFloat(i.weight || '0'),
-    0
+    (s, i) => s + parseFloat(i.price || '0') * parseFloat(i.weight || '0'),
+    0,
   );
 
   const addService = () =>
     setItems([...items, { service: '', weight: '', price: '', note: '' }]);
 
-  const updateItem = (i: number, k: keyof LaundryItem, v: string) => {
+  const updateItem = (idx: number, key: keyof LaundryItem, val: string) => {
     const arr = [...items];
-    arr[i][k] = v;
+    arr[idx][key] = val;
     setItems(arr);
   };
 
-  const openPicker = (which: 'in' | 'out') =>
-    setDatePicker({ open: true, which });
-  const closePicker = () => setDatePicker((prev) => ({ ...prev, open: false }));
+  /* date helpers */
+  const openPicker = (which: 'in' | 'out') => setDatePicker({ open: true, which });
+  const closePicker = () => setDatePicker(p => ({ ...p, open: false }));
   const onConfirmDate = (d: Date) => {
     datePicker.which === 'in' ? setInDate(d) : setOutDate(d);
     closePicker();
   };
 
-  /* ─────────────── generate ID saat masuk review ─────────────── */
+  /* generate order id */
   useEffect(() => {
-    if (step === 2 && !orderId) setOrderId(Date.now()); // timestamp unik
+    if (step === 2 && !orderId) setOrderId(Date.now());
   }, [step, orderId]);
 
-  /* ─────────────── simpan order ke Firestore ─────────────── */
+  /* ───────────── firestore save ───────────── */
   const saveOrder = async () => {
-    if (!selectedCust) {
-      alert('Pilih pelanggan terlebih dahulu!');
-      return;
-    }
-    if (!orderId) {
-      alert('ID pesanan belum dibuat.');
-      return;
-    }
+    if (!selectedCust) return alert('Pilih pelanggan terlebih dahulu!');
+    if (!orderId) return alert('ID pesanan belum dibuat.');
     try {
       await setDoc(doc(db, 'orders', orderId.toString()), {
         orderNumber: orderId,
@@ -142,7 +147,7 @@ export default function LaundryFormScreen() {
       });
       alert('Pesanan tersimpan.');
 
-      // reset
+      /* reset form */
       setStep(0);
       setOrderId(null);
       setSelectedCust(null);
@@ -155,14 +160,99 @@ export default function LaundryFormScreen() {
     }
   };
 
-  /* ─────────────── step 0: laundry ─────────────── */
+  /* export pdf */
+/* ─────────────── export PDF dgn styling tabel ─────────────── */
+const exportToPdf = async () => {
+  /* buat baris layanan */
+  const servicesRows = items
+    .map(
+      it => `
+        <tr>
+          <td>${it.service}</td>
+          <td style="text-align:center;">${it.weight}</td>
+          <td style="text-align:right;">Rp${parseFloat(it.price || '0').toLocaleString('id-ID')}</td>
+          <td style="text-align:right;">Rp${(
+            parseFloat(it.weight || '0') * parseFloat(it.price || '0')
+          ).toLocaleString('id-ID')}</td>
+        </tr>`,
+    )
+    .join('');
+
+  /* HTML lengkap */
+  const html = `
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <style>
+          body { font-family: Arial, Helvetica, sans-serif; margin: 24px; color:#000; }
+          h2 { margin-bottom: 4px; }
+          .card {
+            border: 1px solid #999; border-radius: 8px;
+            padding: 12px; margin-top: 14px;
+          }
+          table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px;}
+          th, td { border: 1px solid #ccc; padding: 6px; }
+          th { background: #f2f2f2; text-align: left; }
+          .tot { font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <h2>Laundry Order #${orderId}</h2>
+
+        <div class="card">
+          <h3 style="margin-top:0;">Pelanggan</h3>
+          <p>
+            <b>Nama:</b> ${selectedCust?.name}<br/>
+            <b>No. WA:</b> ${selectedCust?.phone}<br/>
+            <b>Tgl Masuk:</b> ${inDate?.toLocaleDateString()}<br/>
+            <b>Tgl Keluar:</b> ${outDate?.toLocaleDateString()}
+          </p>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-top:0;">Detail Layanan</h3>
+          <table>
+            <thead>
+              <tr>
+                <th style="width:40%;">Layanan</th>
+                <th style="width:15%; text-align:center;">Qty</th>
+                <th style="width:20%; text-align:right;">Harga</th>
+                <th style="width:25%; text-align:right;">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${servicesRows}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="3" class="tot" style="text-align:right;">TOTAL</td>
+                <td class="tot" style="text-align:right;">Rp ${totalHarga.toLocaleString('id-ID')}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <p style="margin-top:16px;">
+          <b>Metode Pembayaran:</b> ${pay === 'cash' ? 'Cash' : pay === 'qris' ? 'QRIS' : 'Transfer'}
+        </p>
+      </body>
+    </html>
+  `;
+
+  /* generate & share PDF */
+  const { uri } = await Print.printToFileAsync({ html });
+  await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
+};
+
+
+  /* ───────────── step 0: laundry ───────────── */
   const renderLaundryStep = () => (
     <KeyboardAwareScrollView
       contentContainerStyle={{ padding: 16, paddingBottom: 140 }}
       enableOnAndroid
       keyboardShouldPersistTaps="handled"
     >
-      {/* autocomplete nomor */}
+      {/* nomor telepon + autocomplete */}
       <View style={styles.autoWrap}>
         <TextInput
           ref={phoneInputRef}
@@ -170,7 +260,7 @@ export default function LaundryFormScreen() {
           placeholder="Nomor Telepon / WhatsApp"
           value={selectedCust ? selectedCust.phone : phoneText}
           keyboardType="phone-pad"
-          onChangeText={(t) => {
+          onChangeText={t => {
             setSelectedCust(null);
             setPhoneText(t);
           }}
@@ -180,7 +270,7 @@ export default function LaundryFormScreen() {
 
         {phoneText.length > 0 && !selectedCust && (
           <ScrollView style={styles.autoList} keyboardShouldPersistTaps="handled">
-            {filteredCust.map((c) => (
+            {filteredCust.map(c => (
               <TouchableOpacity
                 key={c.id}
                 onPress={() => {
@@ -188,16 +278,14 @@ export default function LaundryFormScreen() {
                   setPhoneText(c.phone);
                 }}
               >
-                <Text style={styles.autoItem}>
-                  {c.phone} · {c.name}
-                </Text>
+                <Text style={styles.autoItem}>{c.phone} · {c.name}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
         )}
       </View>
 
-      {/* nama pelanggan readonly */}
+      {/* nama readonly */}
       <TextInput
         placeholder="Nama Pelanggan"
         style={styles.input}
@@ -207,59 +295,76 @@ export default function LaundryFormScreen() {
 
       {/* tanggal */}
       <View style={styles.row}>
-        <TouchableOpacity
-          style={[styles.input, { flex: 1, marginRight: 6 }]}
-          onPress={() => openPicker('in')}
-        >
+        <TouchableOpacity style={[styles.input, { flex: 1, marginRight: 6 }]} onPress={() => openPicker('in')}>
           <Text style={{ color: inDate ? '#000' : '#888' }}>
             {inDate ? inDate.toLocaleDateString() : 'Tanggal Masuk'}
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.input, { flex: 1, marginLeft: 6 }]}
-          onPress={() => openPicker('out')}
-        >
+        <TouchableOpacity style={[styles.input, { flex: 1, marginLeft: 6 }]} onPress={() => openPicker('out')}>
           <Text style={{ color: outDate ? '#000' : '#888' }}>
             {outDate ? outDate.toLocaleDateString() : 'Tanggal Keluar'}
           </Text>
         </TouchableOpacity>
       </View>
 
-      {/* layanan */}
+      {/* layanan list */}
       {items.map((it, i) => (
-        <View
-          key={i}
-          style={[styles.card, { marginBottom: 16, backgroundColor: '#EAF4FF' }]}
-        >
+        <View key={i} style={[styles.card, { marginBottom: 16, backgroundColor: '#EAF4FF' }]}>
           <Text style={styles.cardTitle}>Layanan #{i + 1}</Text>
-          <TextInput
-            placeholder="Jenis Layanan"
-            style={styles.input}
-            value={it.service}
-            onChangeText={(t) => updateItem(i, 'service', t)}
-          />
 
+          {/* input + autocomplete layanan */}
+          <View style={styles.autoWrap}>
+            <TextInput
+              style={styles.input}
+              placeholder="Jenis Layanan"
+              value={it.service}
+              onChangeText={t => {
+                updateItem(i, 'service', t);
+                setOpenSvcIdx(i);
+              }}
+              onFocus={() => setOpenSvcIdx(i)}
+              onBlur={() => setTimeout(() => setOpenSvcIdx(null), 150)}
+            />
+
+            {openSvcIdx === i && it.service.length > 0 && (
+              <ScrollView style={styles.autoList} keyboardShouldPersistTaps="handled">
+                {serviceOptions
+                  .filter(opt => opt.toLowerCase().includes(it.service.toLowerCase()))
+                  .map(opt => (
+                    <TouchableOpacity
+                      key={opt}
+                      onPress={() => {
+                        updateItem(i, 'service', opt);
+                        setOpenSvcIdx(null);
+                      }}
+                    >
+                      <Text style={styles.autoItem}>{opt}</Text>
+                    </TouchableOpacity>
+                  ))}
+              </ScrollView>
+            )}
+          </View>
+
+          {/* kuantitas / harga */}
           <View style={styles.row}>
             <TextInput
               placeholder="Jumlah (Kg/Pcs)"
-              style={[styles.input, { flex: 1, marginRight: 6 }]}
+              style={[styles.numericInput, { flex: 1, marginRight: 6 }]}
               keyboardType="decimal-pad"
               value={it.weight}
-              onChangeText={(t) => updateItem(i, 'weight', t)}
+              onChangeText={t => updateItem(i, 'weight', t)}
             />
             <TextInput
               placeholder="Harga Satuan"
-              style={[styles.input, { flex: 1, marginLeft: 6 }]}
+              style={[styles.numericInput, { flex: 1, marginLeft: 6 }]}
               keyboardType="decimal-pad"
               value={it.price}
-              onChangeText={(t) => updateItem(i, 'price', t)}
+              onChangeText={t => updateItem(i, 'price', t)}
             />
             <TextInput
               placeholder="Subtotal (Rp)"
-              style={[styles.readonlyInput, { flex: 1, marginLeft: 6 }]}
-              value={(
-                parseFloat(it.weight || '0') * parseFloat(it.price || '0')
-              ).toLocaleString('id-ID')}
+              style={[styles.readonlyInput, { flex: 1, marginLeft: 6, textAlign: 'center' }]}
+              value={(parseFloat(it.weight || '0') * parseFloat(it.price || '0')).toLocaleString('id-ID')}
               editable={false}
             />
           </View>
@@ -269,14 +374,12 @@ export default function LaundryFormScreen() {
             style={[styles.input, { height: 70 }]}
             multiline
             value={it.note}
-            onChangeText={(t) => updateItem(i, 'note', t)}
+            onChangeText={t => updateItem(i, 'note', t)}
           />
 
           {i === items.length - 1 && (
             <TouchableOpacity onPress={addService} style={{ marginTop: 8 }}>
-              <Text style={{ color: '#007AFF', textAlign: 'center' }}>
-                + Tambah Layanan
-              </Text>
+              <Text style={{ color: '#007AFF', textAlign: 'center' }}>+ Tambah Layanan</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -284,9 +387,7 @@ export default function LaundryFormScreen() {
 
       <View style={styles.totalContainer}>
         <Text style={{ fontWeight: 'bold' }}>Estimasi Total :</Text>
-        <Text style={{ fontWeight: 'bold' }}>
-          Rp {totalHarga.toLocaleString('id-ID')}
-        </Text>
+        <Text style={{ fontWeight: 'bold' }}>Rp {totalHarga.toLocaleString('id-ID')}</Text>
       </View>
 
       <TouchableOpacity style={styles.btnNext} onPress={() => setStep(1)}>
@@ -295,84 +396,51 @@ export default function LaundryFormScreen() {
     </KeyboardAwareScrollView>
   );
 
-  /* ─────────────── step 1: bayar ─────────────── */
+  /* ───────────── step 1: bayar ───────────── */
   const renderPaymentStep = () => (
     <View style={{ flex: 1, padding: 16 }}>
-      <TouchableOpacity onPress={() => setStep(0)} style={{ marginBottom: 20 }}>
-        <Text style={{ color: '#007AFF', fontSize: 16 }}>{'← Kembali'}</Text>
+      <TouchableOpacity onPress={() => setStep(0)} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
+        <Ionicons name="arrow-back" size={20} color="#007AFF" style={{ marginRight: 4 }} />
+        <Text style={{ color: '#007AFF', fontSize: 16 }}>Kembali</Text>
       </TouchableOpacity>
 
       <View style={styles.card}>
-        <Text style={{ fontWeight: 'bold', marginBottom: 8 }}>
-          Detail Pelanggan
-        </Text>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Nama</Text>
-          <Text style={styles.detailValue}>{selectedCust?.name}</Text>
-        </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Nomor</Text>
-          <Text style={styles.detailValue}>{selectedCust?.phone}</Text>
-        </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Total</Text>
-          <Text style={styles.detailValue}>
-            Rp {totalHarga.toLocaleString('id-ID')}
-          </Text>
-        </View>
+        <Text style={{ fontWeight: 'bold', marginBottom: 8 }}>Detail Pelanggan</Text>
+        <View style={styles.detailRow}><Text style={styles.detailLabel}>Nama</Text><Text style={styles.detailValue}>{selectedCust?.name}</Text></View>
+        <View style={styles.detailRow}><Text style={styles.detailLabel}>Nomor</Text><Text style={styles.detailValue}>{selectedCust?.phone}</Text></View>
+        <View style={styles.detailRow}><Text style={styles.detailLabel}>Total</Text><Text style={styles.detailValue}>Rp {totalHarga.toLocaleString('id-ID')}</Text></View>
       </View>
 
       <View style={[styles.card, { marginTop: 16 }]}>
-        <Text style={{ fontWeight: 'bold', marginBottom: 12 }}>
-          Metode Pembayaran
-        </Text>
-        {(['cash', 'qris', 'transfer'] as const).map((method) => (
+        <Text style={{ fontWeight: 'bold', marginBottom: 12 }}>Metode Pembayaran</Text>
+        {(['cash', 'qris', 'transfer'] as const).map(method => (
           <TouchableOpacity
             key={method}
-            style={[
-              styles.paymentOption,
-              pay === method && styles.paymentOptionSelected,
-            ]}
+            style={[styles.paymentOption, pay === method && styles.paymentOptionSelected]}
             onPress={() => setPay(method)}
           >
             <Ionicons
-              name={
-                method === 'cash'
-                  ? 'cash'
-                  : method === 'qris'
-                  ? 'qr-code-outline'
-                  : 'swap-horizontal-outline'
-              }
+              name={method === 'cash' ? 'cash' : method === 'qris' ? 'qr-code-outline' : 'swap-horizontal-outline'}
               size={20}
               color="#555"
             />
-            <Text style={styles.paymentText}>
-              {method === 'cash' ? 'Cash' : method === 'qris' ? 'QRIS' : 'Transfer'}
-            </Text>
+            <Text style={styles.paymentText}>{method === 'cash' ? 'Cash' : method === 'qris' ? 'QRIS' : 'Transfer'}</Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      <TouchableOpacity
-        style={[styles.btnNext, { marginTop: 20 }]}
-        onPress={() => setStep(2)}
-      >
+      <TouchableOpacity style={[styles.btnNext, { marginTop: 20 }]} onPress={() => setStep(2)}>
         <Text style={styles.btnTxt}>Lanjut Review Pesanan</Text>
       </TouchableOpacity>
     </View>
   );
 
-  /* ─────────────── step 2: review ─────────────── */
+  /* ───────────── step 2: review ───────────── */
   const renderReviewStep = () => (
     <ScrollView style={{ padding: 16 }}>
-      <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16 }}>
-        Review Pesanan
-      </Text>
+      <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16 }}>Review Pesanan</Text>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Nomor Pesanan</Text>
-        <Text>{orderId}</Text>
-      </View>
+      <View style={styles.card}><Text style={styles.cardTitle}>Nomor Pesanan</Text><Text>{orderId}</Text></View>
 
       <View style={[styles.card, { marginTop: 16 }]}>
         <Text style={styles.cardTitle}>Pelanggan</Text>
@@ -388,17 +456,12 @@ export default function LaundryFormScreen() {
           <View key={i} style={{ marginBottom: 8 }}>
             <Text>{it.service} · {it.weight}×Rp{it.price}</Text>
             <Text>
-              Subtotal: Rp{' '}
-              {(
-                parseFloat(it.weight || '0') * parseFloat(it.price || '0')
-              ).toLocaleString('id-ID')}
+              Subtotal: Rp {(parseFloat(it.weight || '0') * parseFloat(it.price || '0')).toLocaleString('id-ID')}
             </Text>
             {it.note ? <Text>Catatan: {it.note}</Text> : null}
           </View>
         ))}
-        <Text style={{ fontWeight: 'bold', marginTop: 8 }}>
-          Total: Rp {totalHarga.toLocaleString('id-ID')}
-        </Text>
+        <Text style={{ fontWeight: 'bold', marginTop: 8 }}>Total: Rp {totalHarga.toLocaleString('id-ID')}</Text>
       </View>
 
       <View style={[styles.card, { marginTop: 16 }]}>
@@ -406,26 +469,24 @@ export default function LaundryFormScreen() {
         <Text>{pay === 'cash' ? 'Cash' : pay === 'qris' ? 'QRIS' : 'Transfer'}</Text>
       </View>
 
-      <TouchableOpacity
-        style={[styles.btnNext, { marginTop: 20 }]}
-        onPress={saveOrder}
-      >
+      <TouchableOpacity style={[styles.btnNext, { marginTop: 20 }]} onPress={exportToPdf}>
+        <Text style={styles.btnTxt}>Simpan ke PDF</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={[styles.btnNext, { marginTop: 12 }]} onPress={saveOrder}>
         <Text style={styles.btnTxt}>Simpan Pesanan</Text>
       </TouchableOpacity>
     </ScrollView>
   );
 
-  /* ─────────────── render utama ─────────────── */
+  /* ───────────── render utama ───────────── */
   return (
     <View style={{ flex: 1, backgroundColor: '#F6FCFF' }}>
-      {/* step indicator */}
       <View style={styles.stepRow}>
         {['bag-add-outline', 'wallet', 'checkmark-done'].map((ic, i) => (
           <View key={ic} style={styles.stepItem}>
             <Ionicons name={ic as any} size={24} color={step >= i ? '#007AFF' : '#bbb'} />
-            <Text style={[styles.stepLabel, step >= i && { color: '#007AFF' }]}>
-              {['Laundry', 'Bayar', 'Review'][i]}
-            </Text>
+            <Text style={[styles.stepLabel, step >= i && { color: '#007AFF' }]}>{['Laundry', 'Bayar', 'Review'][i]}</Text>
           </View>
         ))}
       </View>
@@ -434,12 +495,7 @@ export default function LaundryFormScreen() {
       {step === 1 && renderPaymentStep()}
       {step === 2 && renderReviewStep()}
 
-      <DateTimePickerModal
-        isVisible={datePicker.open}
-        mode="date"
-        onConfirm={onConfirmDate}
-        onCancel={closePicker}
-      />
+      <DateTimePickerModal isVisible={datePicker.open} mode="date" onConfirm={onConfirmDate} onCancel={closePicker} />
     </View>
   );
 }
@@ -461,7 +517,15 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 12,
     marginBottom: 12,
-    color: '#000'
+    color: '#000',
+  },
+  numericInput: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+    color: '#000',
+    textAlign: 'center',
   },
   readonlyInput: {
     backgroundColor: '#f2f2f2',
@@ -526,5 +590,9 @@ const styles = StyleSheet.create({
     elevation: 2,
     zIndex: 20,
   },
-  autoItem: { padding: 12, borderBottomWidth: 1, borderBottomColor: '#eee' },
+  autoItem: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
 });
