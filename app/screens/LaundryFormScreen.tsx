@@ -1,260 +1,164 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
+  View, Text, StyleSheet, TextInput, TouchableOpacity,
   ScrollView,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import {
-  collection,
-  query,
-  where,
-  onSnapshot,
-  doc,
-  setDoc,
-  updateDoc,
-  serverTimestamp,
-  increment,
+  collection, query, where, onSnapshot,
+  doc, setDoc, updateDoc, serverTimestamp, increment,
 } from 'firebase/firestore';
 import { auth, db } from '../../config/private-config/config/firebaseConfig';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
-import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
+import * as Print    from 'expo-print';
+import * as Sharing  from 'expo-sharing';
 
-type Step = 0 | 1 | 2;
+/* ---------- types ---------- */
+type Step      = 0|1|2;
+type PayMethod = 'cash'|'qris'|'transfer'|'unpaid';
 
-interface LaundryItem {
-  service: string;
-  weight: string;
-  price: string;
-  note: string;
-}
+interface LaundryItem { service:string; weight:string; price:string; note:string; }
+interface CustomerInfo{ id:string; name:string; phone:string; }
 
-interface CustomerInfo {
-  id: string;
-  name: string;
-  phone: string;
-}
-
+/* ---------- komponen ---------- */
 export default function LaundryFormScreen() {
-  /* ───────────── step & order ───────────── */
-  const [step, setStep] = useState<Step>(0);
-  const [orderId, setOrderId] = useState<number | null>(null);
+  /* step & order */
+  const [step,setStep] = useState<Step>(0);
+  const [orderId,setOrderId] = useState<number|null>(null);
 
-  /* ───────────── customer ───────────── */
-  const [phoneText, setPhoneText] = useState('');
-  const [customers, setCustomers] = useState<CustomerInfo[]>([]);
-  const [selectedCust, setSelectedCust] = useState<CustomerInfo | null>(null);
+  /* pelanggan */
+  const [phoneText,setPhoneText] = useState('');
+  const [customers,setCustomers] = useState<CustomerInfo[]>([]);
+  const [selectedCust,setSelectedCust] = useState<CustomerInfo|null>(null);
   const phoneInputRef = useRef<TextInput>(null);
 
-  /* ───────────── tanggal ───────────── */
-  const [inDate, setInDate] = useState<Date | null>(null);
-  const [outDate, setOutDate] = useState<Date | null>(null);
-  const [datePicker, setDatePicker] = useState({ open: false, which: 'in' as 'in' | 'out' });
+  /* tanggal */
+  const [inDate,setInDate]   = useState<Date|null>(null);
+  const [outDate,setOutDate] = useState<Date|null>(null);
+  const [datePicker,setDatePicker] = useState({open:false,which:'in' as 'in'|'out'});
 
-  /* ───────────── layanan ───────────── */
-  const [items, setItems] = useState<LaundryItem[]>([
-    { service: '', weight: '', price: '', note: '' },
-  ]);
-  const [serviceOptions, setServiceOptions] = useState<string[]>([]);
-  const [openSvcIdx, setOpenSvcIdx] = useState<number | null>(null); // indeks card yg autocomplete terbuka
+  /* layanan */
+  const [items,setItems] = useState<LaundryItem[]>([{service:'',weight:'',price:'',note:''}]);
+  const [serviceOptions,setServiceOptions] = useState<string[]>([]);
+  const [openSvcIdx,setOpenSvcIdx] = useState<number|null>(null);
 
-  /* ───────────── pembayaran ───────────── */
-  const [pay, setPay] = useState<'cash' | 'qris' | 'transfer'>('qris');
+  /* pembayaran */
+  const [pay,setPay] = useState<PayMethod>('unpaid');   // ▶️ default belum‑bayar
 
-  /* ───────────── ambil customers realtime ───────────── */
-  useEffect(() => {
-    const u = auth.currentUser;
-    if (!u) return;
-    const q = query(collection(db, 'customers'), where('ownerId', '==', u.uid));
-    const unsub = onSnapshot(q, snap =>
-      setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() } as CustomerInfo))),
+  /* ---------- realtime pelanggan ---------- */
+  useEffect(()=>{
+    const u=auth.currentUser; if(!u) return;
+    const unsub=onSnapshot(
+      query(collection(db,'customers'),where('ownerId','==',u.uid)),
+      s=>setCustomers(s.docs.map(d=>({id:d.id,...d.data()}) as CustomerInfo))
     );
-    return () => unsub();
-  }, []);
+    return unsub;
+  },[]);
 
-  /* ───────────── ambil list layanan ───────────── */
-  useEffect(() => {
-    const colRef = collection(db, 'list_laundry');
-    const unsub = onSnapshot(colRef, snap =>
+  /* ---------- list layanan master ---------- */
+  useEffect(()=>{
+    const col=collection(db,'list_laundry');
+    const unsub=onSnapshot(col,s=>{
       setServiceOptions(
-        snap.docs.flatMap(d => {
-          const data: any = d.data();
-          if (Array.isArray(data.list)) return data.list as string[];
-          if (typeof data.list === 'string') return [data.list];
-          if (typeof data.name === 'string') return [data.name];
+        s.docs.flatMap(d=>{
+          const data=d.data() as any;
+          if(Array.isArray(data.list)) return data.list;
+          if(typeof data.list==='string') return [data.list];
+          if(typeof data.name==='string') return [data.name];
           return [];
-        }),
-      ),
-    );
-    return () => unsub();
-  }, []);
+        })
+      );
+    });
+    return unsub;
+  },[]);
 
-  const filteredCust = customers.filter(c => c.phone.includes(phoneText.trim()));
+  const filteredCust = customers.filter(c=>c.phone.includes(phoneText.trim()));
 
-  /* ───────────── helpers ───────────── */
+  /* ---------- helpers ---------- */
   const totalHarga = items.reduce(
-    (s, i) => s + parseFloat(i.price || '0') * parseFloat(i.weight || '0'),
-    0,
-  );
+    (s,i)=>s+parseFloat(i.price||'0')*parseFloat(i.weight||'0'),0);
 
-  const addService = () =>
-    setItems([...items, { service: '', weight: '', price: '', note: '' }]);
-
-  const updateItem = (idx: number, key: keyof LaundryItem, val: string) => {
-    const arr = [...items];
-    arr[idx][key] = val;
-    setItems(arr);
+  const addService = ()=>setItems([...items,{service:'',weight:'',price:'',note:''}]);
+  const updateItem = (idx:number,key:keyof LaundryItem,val:string)=>{
+    const arr=[...items]; arr[idx][key]=val; setItems(arr);
   };
 
-  /* date helpers */
-  const openPicker = (which: 'in' | 'out') => setDatePicker({ open: true, which });
-  const closePicker = () => setDatePicker(p => ({ ...p, open: false }));
-  const onConfirmDate = (d: Date) => {
-    datePicker.which === 'in' ? setInDate(d) : setOutDate(d);
-    closePicker();
+  /* tanggal */
+  const openPicker=(w:'in'|'out')=>setDatePicker({open:true,which:w});
+  const closePicker=()=>setDatePicker(p=>({...p,open:false}));
+  const onConfirmDate=(d:Date)=>{
+    datePicker.which==='in'?setInDate(d):setOutDate(d); closePicker();
   };
 
-  /* generate order id */
-  useEffect(() => {
-    if (step === 2 && !orderId) setOrderId(Date.now());
-  }, [step, orderId]);
+  /* generate orderNo */
+  useEffect(()=>{ if(step===2 && !orderId) setOrderId(Date.now()); },[step,orderId]);
 
-  /* ───────────── firestore save ───────────── */
-  const saveOrder = async () => {
-    if (!selectedCust) return alert('Pilih pelanggan terlebih dahulu!');
-    if (!orderId) return alert('ID pesanan belum dibuat.');
-    try {
-      await setDoc(doc(db, 'orders', orderId.toString()), {
-        orderNumber: orderId,
-        customerId: selectedCust.id,
+  /* ---------- simpan ---------- */
+  const saveOrder = async ()=>{
+    if(!selectedCust) return alert('Pilih pelanggan terlebih dahulu!');
+    if(!orderId)      return alert('ID pesanan belum dibuat.');
+
+    try{
+      /* a. tabel orders */
+      await setDoc(doc(db,'orders',orderId.toString()),{
+        orderNumber : orderId,
+        customerId  : selectedCust.id,
         customerName: selectedCust.name,
-        phone: selectedCust.phone,
-        inDate,
-        outDate,
-        items,
-        total: totalHarga,
-        payment: pay,
-        ownerId: auth.currentUser?.uid,
-        createdAt: serverTimestamp(),
+        phone       : selectedCust.phone,
+        inDate,outDate, items, total:totalHarga,
+        payment     : pay,
+        ownerId     : auth.currentUser?.uid,
+        createdAt   : serverTimestamp(),
       });
 
-      // b. list aktif “laundry” (untuk dashboard)
-      await setDoc(doc(db,"laundry", orderId.toString()), {
-        name : selectedCust.name,
-        phone: selectedCust.phone,
-        items: items.map(it => `${it.service} ${it.weight}×`),
-        status  : "Sedang Diproses",                // default
-        deadline: outDate,                          // timestamp
+      /* b. tabel laundry (dashboard) */
+      await setDoc(doc(db,'laundry',orderId.toString()),{
+        orderNumber : orderId,
+        name   : selectedCust.name,
+        phone  : selectedCust.phone,
+        items  : items.map(it=>`${it.service} ${it.weight}×`),
+        status : 'Sedang Diproses',
+        payment: pay,
+        deadline: outDate,
         ownerId : auth.currentUser?.uid,
         createdAt: serverTimestamp(),
       });
-      
-      await updateDoc(doc(db, 'customers', selectedCust.id), {
-        totalOrders: increment(1),
-      });
-      alert('Pesanan tersimpan.');
 
-      /* reset form */
-      setStep(0);
-      setOrderId(null);
-      setSelectedCust(null);
-      setPhoneText('');
-      setInDate(null);
-      setOutDate(null);
-      setItems([{ service: '', weight: '', price: '', note: '' }]);
-    } catch (e: any) {
-      alert(e.message);
-    }
+      /* c. update total order pelanggan */
+      await updateDoc(doc(db,'customers',selectedCust.id),{ totalOrders: increment(1) });
+
+      alert('Pesanan tersimpan.');
+      /* reset */
+      setStep(0); setOrderId(null); setSelectedCust(null); setPhoneText('');
+      setInDate(null); setOutDate(null);
+      setItems([{service:'',weight:'',price:'',note:''}]);
+      setPay('unpaid');
+    }catch(e:any){ alert(e.message); }
   };
 
-  /* export pdf */
-/* ─────────────── export PDF dgn styling tabel ─────────────── */
-const exportToPdf = async () => {
-  /* buat baris layanan */
-  const servicesRows = items
-    .map(
-      it => `
-        <tr>
-          <td>${it.service}</td>
-          <td style="text-align:center;">${it.weight}</td>
-          <td style="text-align:right;">Rp${parseFloat(it.price || '0').toLocaleString('id-ID')}</td>
-          <td style="text-align:right;">Rp${(
-            parseFloat(it.weight || '0') * parseFloat(it.price || '0')
-          ).toLocaleString('id-ID')}</td>
-        </tr>`,
-    )
-    .join('');
-
-  /* HTML lengkap */
-  const html = `
-    <html>
-      <head>
-        <meta charset="utf-8" />
-        <style>
-          body { font-family: Arial, Helvetica, sans-serif; margin: 24px; color:#000; }
-          h2 { margin-bottom: 4px; }
-          .card {
-            border: 1px solid #999; border-radius: 8px;
-            padding: 12px; margin-top: 14px;
-          }
-          table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px;}
-          th, td { border: 1px solid #ccc; padding: 6px; }
-          th { background: #f2f2f2; text-align: left; }
-          .tot { font-weight: bold; }
-        </style>
-      </head>
-      <body>
-        <h2>Laundry Order #${orderId}</h2>
-
-        <div class="card">
-          <h3 style="margin-top:0;">Pelanggan</h3>
-          <p>
-            <b>Nama:</b> ${selectedCust?.name}<br/>
-            <b>No. WA:</b> ${selectedCust?.phone}<br/>
-            <b>Tgl Masuk:</b> ${inDate?.toLocaleDateString()}<br/>
-            <b>Tgl Keluar:</b> ${outDate?.toLocaleDateString()}
-          </p>
-        </div>
-
-        <div class="card">
-          <h3 style="margin-top:0;">Detail Layanan</h3>
-          <table>
-            <thead>
-              <tr>
-                <th style="width:40%;">Layanan</th>
-                <th style="width:15%; text-align:center;">Qty</th>
-                <th style="width:20%; text-align:right;">Harga</th>
-                <th style="width:25%; text-align:right;">Subtotal</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${servicesRows}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colspan="3" class="tot" style="text-align:right;">TOTAL</td>
-                <td class="tot" style="text-align:right;">Rp ${totalHarga.toLocaleString('id-ID')}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-
-        <p style="margin-top:16px;">
-          <b>Metode Pembayaran:</b> ${pay === 'cash' ? 'Cash' : pay === 'qris' ? 'QRIS' : 'Transfer'}
-        </p>
-      </body>
-    </html>
-  `;
-
-  /* generate & share PDF */
-  const { uri } = await Print.printToFileAsync({ html });
-  await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
-};
+  /* ---------- export PDF ---------- */
+  const exportToPdf = async ()=>{
+    const rows = items.map(
+      it=>`<tr><td>${it.service}</td><td style="text-align:center;">${it.weight}</td>
+      <td style="text-align:right;">Rp${(+it.price||0).toLocaleString('id-ID')}</td>
+      <td style="text-align:right;">Rp${((+it.price||0)*(+it.weight||0)).toLocaleString('id-ID')}</td></tr>`
+    ).join('');
+    const html=`
+      <html><head><meta charset="utf-8"/>
+      <style>body{font-family:Arial; margin:24px;} table{width:100%;border-collapse:collapse;font-size:12px;}
+      th,td{border:1px solid #ccc;padding:6px}</style></head><body>
+      <h2>Laundry Order #${orderId}</h2>
+      <p><b>Nama:</b> ${selectedCust?.name}<br/><b>No. WA:</b> ${selectedCust?.phone}</p>
+      <table><thead><tr><th>Layanan</th><th>Qty</th><th>Harga</th><th>Subtotal</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><td colspan="3" style="text-align:right;font-weight:bold">TOTAL</td>
+      <td style="text-align:right;font-weight:bold">Rp ${totalHarga.toLocaleString('id-ID')}</td></tr></tfoot></table>
+      <p><b>Pembayaran:</b> ${
+        pay==='cash'?'Cash':pay==='qris'?'QRIS':pay==='transfer'?'Transfer':'Belum Bayar'
+      }</p></body></html>`;
+    const {uri}=await Print.printToFileAsync({html}); await Sharing.shareAsync(uri,{UTI:'.pdf',mimeType:'application/pdf'});
+  };
 
 
   /* ───────────── step 0: laundry ───────────── */
@@ -408,40 +312,41 @@ const exportToPdf = async () => {
     </KeyboardAwareScrollView>
   );
 
-  /* ───────────── step 1: bayar ───────────── */
+  /* ---------- STEP 1 (pembayaran) ---------- */
   const renderPaymentStep = () => (
-    <View style={{ flex: 1, padding: 16 }}>
-      <TouchableOpacity onPress={() => setStep(0)} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
-        <Ionicons name="arrow-back" size={20} color="#007AFF" style={{ marginRight: 4 }} />
-        <Text style={{ color: '#007AFF', fontSize: 16 }}>Kembali</Text>
+    <View style={{flex:1,padding:16}}>
+      <TouchableOpacity onPress={()=>setStep(0)} style={{flexDirection:'row',alignItems:'center',marginBottom:16}}>
+        <Ionicons name="arrow-back" size={20} color="#007AFF"/><Text style={{color:'#007AFF',marginLeft:4}}>Kembali</Text>
       </TouchableOpacity>
 
+      {/* detail pelanggan */}
       <View style={styles.card}>
-        <Text style={{ fontWeight: 'bold', marginBottom: 8 }}>Detail Pelanggan</Text>
-        <View style={styles.detailRow}><Text style={styles.detailLabel}>Nama</Text><Text style={styles.detailValue}>{selectedCust?.name}</Text></View>
-        <View style={styles.detailRow}><Text style={styles.detailLabel}>Nomor</Text><Text style={styles.detailValue}>{selectedCust?.phone}</Text></View>
-        <View style={styles.detailRow}><Text style={styles.detailLabel}>Total</Text><Text style={styles.detailValue}>Rp {totalHarga.toLocaleString('id-ID')}</Text></View>
+        <Text style={{fontWeight:'bold',marginBottom:8}}>Detail Pelanggan</Text>
+        <Text>Nama  : {selectedCust?.name}</Text>
+        <Text>No WA : {selectedCust?.phone}</Text>
+        <Text>Total : Rp {totalHarga.toLocaleString('id-ID')}</Text>
       </View>
 
-      <View style={[styles.card, { marginTop: 16 }]}>
-        <Text style={{ fontWeight: 'bold', marginBottom: 12 }}>Metode Pembayaran</Text>
-        {(['cash', 'qris', 'transfer'] as const).map(method => (
-          <TouchableOpacity
-            key={method}
-            style={[styles.paymentOption, pay === method && styles.paymentOptionSelected]}
-            onPress={() => setPay(method)}
-          >
+      {/* opsi bayar */}
+      <View style={[styles.card,{marginTop:16}]}>
+        <Text style={{fontWeight:'bold',marginBottom:12}}>Metode Pembayaran</Text>
+        {(['cash','qris','transfer','unpaid'] as const).map(m=>(
+          <TouchableOpacity key={m}
+            style={[styles.paymentOption, pay===m && styles.paymentOptionSelected]}
+            onPress={()=>setPay(m)}>
             <Ionicons
-              name={method === 'cash' ? 'cash' : method === 'qris' ? 'qr-code-outline' : 'swap-horizontal-outline'}
-              size={20}
-              color="#555"
-            />
-            <Text style={styles.paymentText}>{method === 'cash' ? 'Cash' : method === 'qris' ? 'QRIS' : 'Transfer'}</Text>
+              name={
+                m==='cash'?'cash':m==='qris'?'qr-code-outline':
+                m==='transfer'?'swap-horizontal-outline':'alert-circle-outline'}
+              size={20} color="#555"/>
+            <Text style={styles.paymentText}>
+              {m==='cash'?'Cash':m==='qris'?'QRIS':m==='transfer'?'Transfer':'Belum Bayar'}
+            </Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      <TouchableOpacity style={[styles.btnNext, { marginTop: 20 }]} onPress={() => setStep(2)}>
+      <TouchableOpacity style={[styles.btnNext,{marginTop:20}]} onPress={()=>setStep(2)}>
         <Text style={styles.btnTxt}>Lanjut Review Pesanan</Text>
       </TouchableOpacity>
     </View>
@@ -478,7 +383,7 @@ const exportToPdf = async () => {
 
       <View style={[styles.card, { marginTop: 16 }]}>
         <Text style={styles.cardTitle}>Metode Pembayaran</Text>
-        <Text>{pay === 'cash' ? 'Cash' : pay === 'qris' ? 'QRIS' : 'Transfer'}</Text>
+        <Text>{pay === 'cash' ? 'Cash' : pay === 'qris' ? 'QRIS' : pay === 'transfer' ? 'Transfer' : 'Belum Bayar'}</Text>
       </View>
 
       <TouchableOpacity style={[styles.btnNext, { marginTop: 20 }]} onPress={exportToPdf}>
@@ -503,11 +408,10 @@ const exportToPdf = async () => {
         ))}
       </View>
 
-      {step === 0 && renderLaundryStep()}
-      {step === 1 && renderPaymentStep()}
-      {step === 2 && renderReviewStep()}
-
-      <DateTimePickerModal isVisible={datePicker.open} mode="date" onConfirm={onConfirmDate} onCancel={closePicker} />
+      {step===0 && renderLaundryStep()}
+      {step===1 && renderPaymentStep()}
+      {step===2 && renderReviewStep()}
+      <DateTimePickerModal isVisible={datePicker.open} mode="date" onConfirm={onConfirmDate} onCancel={closePicker}/>
     </View>
   );
 }
@@ -577,17 +481,10 @@ const styles = StyleSheet.create({
   },
   detailLabel: { color: '#555' },
   detailValue: { fontWeight: 'bold', color: '#000' },
-  paymentOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#ccc',
-    marginBottom: 10,
-  },
-  paymentOptionSelected: { borderColor: '#007AFF', backgroundColor: '#EAF4FF' },
-  paymentText: { marginLeft: 10, fontSize: 16, color: '#000' },
+  paymentOption:{flexDirection:'row',alignItems:'center',padding:12,borderRadius:10,
+                 borderWidth:1,borderColor:'#ccc',marginBottom:10},
+  paymentOptionSelected:{borderColor:'#007AFF',backgroundColor:'#EAF4FF'},
+  paymentText:{marginLeft:10,fontSize:16},
 
   /* autocomplete */
   autoWrap: { position: 'relative', marginBottom: 12 },

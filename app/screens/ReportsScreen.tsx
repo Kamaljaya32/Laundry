@@ -1,4 +1,3 @@
-// src/screens/ReportsScreen.tsx
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Dimensions,
@@ -11,85 +10,72 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../../config/private-config/config/firebaseConfig';
 
-/* dokumen longgar */
-interface OrderDoc   { total: number | string; createdAt?: Timestamp; }
-interface ExpenseDoc { amount: number | string; note: string; date?: Timestamp; }
+/* tipe longgar */
+interface OrderDoc{ total:number|string; createdAt?:Timestamp; payment?:string; }
+interface ExpenseDoc{ amount:number|string; note:string; date?:Timestamp; }
 
-export default function ReportsScreen() {
-  /* ---------- state ---------- */
-  const [orders,   setOrders]   = useState<OrderDoc[]>([]);
-  const [expenses, setExpenses] = useState<ExpenseDoc[]>([]);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [newAmt,  setNewAmt]  = useState('');
-  const [newNote, setNewNote] = useState('');
+export default function ReportsScreen(){
+  const [orders,setOrders]=useState<OrderDoc[]>([]);
+  const [expenses,setExpenses]=useState<ExpenseDoc[]>([]);
+  const [modal,setModal]=useState(false);
+  const [newAmt,setNewAmt]=useState(''); const [newNote,setNewNote]=useState('');
 
-  /* ---------- listeners ---------- */
-  useEffect(() => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) return;
+  /* realtime */
+  useEffect(()=>{
+    const uid=auth.currentUser?.uid; if(!uid) return;
+    const oUn=onSnapshot(query(collection(db,'orders'  ),where('ownerId','==',uid)),
+      s=>setOrders(s.docs.map(d=>d.data({serverTimestamps:'estimate'}) as OrderDoc)));
+    const eUn=onSnapshot(query(collection(db,'expenses'),where('ownerId','==',uid)),
+      s=>setExpenses(s.docs.map(d=>d.data({serverTimestamps:'estimate'}) as ExpenseDoc)));
+    return ()=>{oUn();eUn();};
+  },[]);
 
-    const unsubOrd = onSnapshot(
-      query(collection(db,'orders'),   where('ownerId','==',uid)),
-      s => setOrders(s.docs.map(d => d.data({ serverTimestamps:'estimate' }) as OrderDoc)),
-    );
-    const unsubExp = onSnapshot(
-      query(collection(db,'expenses'), where('ownerId','==',uid)),
-      s => setExpenses(s.docs.map(d => d.data({ serverTimestamps:'estimate' }) as ExpenseDoc)),
-    );
-    return () => { unsubOrd(); unsubExp(); };
-  }, []);
-
-  /* ---------- agregasi ---------- */
-  const year = new Date().getFullYear();
-  const monthly = useMemo(() => {
-    const m: Record<string,{inc:number;exp:number}> = {};
-    const ensure = (k:string)=> (m[k]??= {inc:0,exp:0});
+  /* agregasi */
+  const year=new Date().getFullYear();
+  const monthly=useMemo(()=>{
+    const obj:Record<string,{inc:number;exp:number}>={};
+    const ensure=(k:string)=>obj[k]??= {inc:0,exp:0};
 
     orders.forEach(o=>{
+      if(o.payment==='unpaid') return;                 /* ⬅️ skip belum bayar */
       if(!o.createdAt) return;
       const d=o.createdAt.toDate(); if(d.getFullYear()!==year) return;
-      ensure(`0${d.getMonth()+1}`.slice(-2)).inc += +o.total||0;
+      ensure(`0${d.getMonth()+1}`.slice(-2)).inc+=+o.total||0;
     });
     expenses.forEach(e=>{
       if(!e.date) return;
       const d=e.date.toDate(); if(d.getFullYear()!==year) return;
-      ensure(`0${d.getMonth()+1}`.slice(-2)).exp += +e.amount||0;
+      ensure(`0${d.getMonth()+1}`.slice(-2)).exp+=+e.amount||0;
     });
-    return m;
+    return obj;
   },[orders,expenses,year]);
 
-  const keys          = Object.keys(monthly).sort();          // ['03','05',…]
-  const incomes       = keys.map(k=>monthly[k].inc);
-  const expens        = keys.map(k=>monthly[k].exp);
-  const incomeYTD     = incomes.reduce((s,x)=>s+x,0);
-  const expenseYTD    = expens .reduce((s,x)=>s+x,0);
-  const profit        = incomeYTD-expenseYTD;
+  const keys   =Object.keys(monthly).sort();
+  const incomes=keys.map(k=>monthly[k].inc);
+  const expens =keys.map(k=>monthly[k].exp);
+  const incomeYTD=incomes.reduce((s,x)=>s+x,0);
+  const expenseYTD=expens.reduce((s,x)=>s+x,0);
+  const profit=incomeYTD-expenseYTD;
 
-  /* ---------- data chart berdampingan ---------- */
-  const monthNames   = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
-  const labels: string[]   = [];
-  const rows:   number[][] = [];            // tiap row = [inc, exp]
-  keys.forEach((k, i) => {
-    /* bar 1 – pemasukan */
-    labels.push(monthNames[+k-1]);
-    rows  .push([ incomes[i]/1_000_000, 0 ]);
-    /* bar 2 – pengeluaran */
-    labels.push('');
-    rows  .push([ 0, expens[i]/1_000_000 ]);
+  /* data chart berdampingan */
+  const monthNames=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  const labels:string[]=[]; const rows:number[][]=[];
+  keys.forEach((k,i)=>{
+    labels.push(monthNames[+k-1]);  rows.push([incomes[i]/1_000_000,0]);
+    labels.push('');                rows.push([0,expens[i]/1_000_000]);
   });
 
-  /* ---------- simpan expense ---------- */
-  const saveExpense = async ()=>{
-    const amt=+newAmt;
-    if(!amt||!newNote.trim()){alert('Nominal & catatan wajib diisi');return;}
+  /* save pengeluaran */
+  const saveExpense=async()=>{
+    const amt=+newAmt; if(!amt||!newNote.trim()) return alert('Nominal & catatan wajib');
     await addDoc(collection(db,'expenses'),{
-      amount:amt, note:newNote.trim(), date:Timestamp.now(), ownerId:auth.currentUser?.uid,
+      amount:amt,note:newNote.trim(),date:Timestamp.now(),ownerId:auth.currentUser?.uid,
     });
-    setNewAmt(''); setNewNote(''); setModalOpen(false);
+    setNewAmt('');setNewNote('');setModal(false);
   };
 
   /* ---------- UI ---------- */
-  return (
+  return(
     <ScrollView contentContainerStyle={{padding:16}}>
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Laporan {year}</Text>
@@ -100,26 +86,19 @@ export default function ReportsScreen() {
               hideLegend
               data={{
                 labels,
-                legend: ['Pemasukan','Pengeluaran'],   /* ← wajib utk tipe */
-                data  : rows,
-                barColors: ['#0066FF','#E60000'],
+                legend:['Pemasukan','Pengeluaran'],
+                data:rows, barColors:['#0066FF','#E60000'],
               }}
               width={Dimensions.get('window').width-64}
               height={260}
-              yAxisLabel=""
-              yAxisSuffix=" Jt"
-              withHorizontalLabels
+              yAxisLabel="" yAxisSuffix=" Jt" withHorizontalLabels
               chartConfig={{
-                backgroundGradientFrom:'#fff',
-                backgroundGradientTo:'#fff',
-                decimalPlaces:0,
-                color:()=> '#888',
-                labelColor:()=> '#666',
+                backgroundGradientFrom:'#fff',backgroundGradientTo:'#fff',
+                decimalPlaces:0,color:()=>'#888',labelColor:()=>'#666',
                 propsForBackgroundLines:{strokeDasharray:'3'},
               }}
               style={{alignSelf:'center',marginVertical:8}}
             />
-
             <View style={{flexDirection:'row',justifyContent:'center',marginTop:6}}>
               <Legend color="#0066FF" label="Pemasukan"/>
               <Legend color="#E60000" label="Pengeluaran" style={{marginLeft:16}}/>
@@ -134,7 +113,7 @@ export default function ReportsScreen() {
       </View>
 
       <View style={styles.rowWrap}>
-        <NumberBox label="Pendapatan Bulan Ini"  value={incomes.at(-1)??0}  color="#0066FF"/>
+        <NumberBox label="Pendapatan Bulan Ini"  value={incomes.at(-1)??0} color="#0066FF"/>
         <NumberBox label="Pengeluaran Bulan Ini" value={expens .at(-1)??0} color="#E60000"/>
       </View>
 
@@ -142,43 +121,28 @@ export default function ReportsScreen() {
         <Text style={{fontSize:18,fontWeight:'600',marginBottom:4}}>Laba Bersih</Text>
         <Text style={{
           fontSize:28,fontWeight:'bold',
-          color: profit>=0 ? '#009F00' : '#E60000',
-        }}>
-          Rp {profit.toLocaleString('id-ID')}
-        </Text>
+          color:profit>=0?'#009F00':'#E60000'}}>Rp {profit.toLocaleString('id-ID')}</Text>
       </View>
 
       {/* FAB */}
-      <TouchableOpacity style={styles.fab} onPress={()=>setModalOpen(true)}>
+      <TouchableOpacity style={styles.fab} onPress={()=>setModal(true)}>
         <Ionicons name="add" size={28} color="#fff"/>
       </TouchableOpacity>
 
       {/* modal */}
-      <Modal visible={modalOpen} transparent animationType="fade">
+      <Modal visible={modal} transparent animationType="fade">
         <View style={styles.modalBg}>
           <View style={styles.modalCard}>
             <Text style={{fontSize:16,fontWeight:'bold',marginBottom:12}}>Tambah Pengeluaran</Text>
-            <TextInput
-              placeholder="Nominal (Rp)"
-              keyboardType={Platform.select({ios:'number-pad',android:'decimal-pad'})}
-              style={styles.input}
-              value={newAmt}
-              onChangeText={setNewAmt}
-            />
-            <TextInput
-              placeholder="Catatan"
-              style={[styles.input,{height:80}]}
-              multiline
-              value={newNote}
-              onChangeText={setNewNote}
-            />
+            <TextInput placeholder="Nominal (Rp)" keyboardType={Platform.select({ios:'number-pad',android:'decimal-pad'})}
+              style={styles.input} value={newAmt} onChangeText={setNewAmt}/>
+            <TextInput placeholder="Catatan" style={[styles.input,{height:80}]} multiline
+              value={newNote} onChangeText={setNewNote}/>
             <View style={[styles.rowWrap,{marginTop:8}]}>
-              <TouchableOpacity style={[styles.btn,{backgroundColor:'#ccc'}]} onPress={()=>setModalOpen(false)}>
-                <Text>Batal</Text>
-              </TouchableOpacity>
+              <TouchableOpacity style={[styles.btn,{backgroundColor:'#ccc'}]} onPress={()=>setModal(false)}>
+                <Text>Batal</Text></TouchableOpacity>
               <TouchableOpacity style={[styles.btn,{backgroundColor:'#007AFF'}]} onPress={saveExpense}>
-                <Text style={{color:'#fff',fontWeight:'600'}}>Simpan</Text>
-              </TouchableOpacity>
+                <Text style={{color:'#fff',fontWeight:'600'}}>Simpan</Text></TouchableOpacity>
             </View>
           </View>
         </View>
@@ -193,8 +157,7 @@ function NumberBox({label,value,color}:{label:string;value:number;color:string})
     <View style={styles.smallCard}>
       <Text style={{fontSize:12,color:'#444'}}>{label}</Text>
       <Text style={{fontSize:18,fontWeight:'bold',color,marginTop:4}}>
-        {value>=1_000_000 ? (value/1_000_000).toFixed(1)+' Juta'
-                          : value.toLocaleString('id-ID')}
+        {value>=1_000_000?(value/1_000_000).toFixed(1)+' Juta':value.toLocaleString('id-ID')}
       </Text>
     </View>
   );
@@ -215,10 +178,8 @@ const styles = StyleSheet.create({
   rowWrap:{flexDirection:'row',justifyContent:'space-between',marginBottom:16},
   smallCard:{flex:1,backgroundColor:'#fff',borderRadius:12,padding:16,elevation:1,marginHorizontal:4},
   cardCenter:{backgroundColor:'#fff',borderRadius:12,padding:20,alignItems:'center',elevation:1},
-
   fab:{position:'absolute',right:24,bottom:24,backgroundColor:'#007AFF',
        width:56,height:56,borderRadius:28,justifyContent:'center',alignItems:'center',elevation:4},
-
   modalBg:{flex:1,backgroundColor:'rgba(0,0,0,0.3)',justifyContent:'center',padding:24},
   modalCard:{backgroundColor:'#fff',borderRadius:12,padding:20},
   input:{backgroundColor:'#fff',borderRadius:10,padding:12,marginBottom:12,borderWidth:1,borderColor:'#ddd'},
