@@ -142,6 +142,18 @@ export default function LaundryFormScreen() {
         ownerId: auth.currentUser?.uid,
         createdAt: serverTimestamp(),
       });
+
+      // b. list aktif “laundry” (untuk dashboard)
+      await setDoc(doc(db,"laundry", orderId.toString()), {
+        name : selectedCust.name,
+        phone: selectedCust.phone,
+        items: items.map(it => `${it.service} ${it.weight}×`),
+        status  : "Sedang Diproses",                // default
+        deadline: outDate,                          // timestamp
+        ownerId : auth.currentUser?.uid,
+        createdAt: serverTimestamp(),
+      });
+      
       await updateDoc(doc(db, 'customers', selectedCust.id), {
         totalOrders: increment(1),
       });

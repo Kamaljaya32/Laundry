@@ -1,209 +1,136 @@
+// src/screens/HomeScreen.tsx
 import React, { useEffect, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  ActivityIndicator,
+  View, Text, StyleSheet, FlatList, ActivityIndicator
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "../../config/private-config/config/firebaseConfig";
-import moment from "moment";
-import { getAuth, onAuthStateChanged } from "firebase/auth";
+import { Ionicons }   from "@expo/vector-icons";
+import { collection, query, where, onSnapshot, Timestamp } from "firebase/firestore";
+import { db, auth }   from "../../config/private-config/config/firebaseConfig";
+import moment         from "moment";
 
-interface LaundryItem {
+type Status = "Sedang Diproses" | "Belum Diambil" | "Telah Diambil";
+
+interface LaundryDoc {
   id: string;
   name: string;
   phone: string;
-  status: "Sedang Diproses" | "Telah Diambil" | "Belum Diambil";
   items: string[];
-  deadline: any; // Firestore Timestamp
+  deadline?: Timestamp;
+  status: Status;
 }
 
-const HomeScreen = () => {
-  const [laundryList, setLaundryList] = useState<LaundryItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [username, setUsername] = useState<string>(""); // Username from Firebase Auth
+/* ---------- util warna & ikon ---------- */
+const STATUS_META: Record<Status, readonly [string,string,string]> = {
+  "Sedang Diproses": ["#E1F0FF", "#007AFF", "🌀"],
+  "Belum Diambil"   : ["#FFF3CD", "#FFA500", "⚠️"],
+  "Telah Diambil"   : ["#E0FFE5", "#28A745", "✅"],
+};
 
-  const fetchLaundryData = async () => {
-    try {
-      const querySnapshot = await getDocs(collection(db, "laundry"));
-      const data: LaundryItem[] = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as LaundryItem[];
-      setLaundryList(data);
-    } catch (error) {
-      console.error("Error fetching laundry data ", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+/* ---------- komponen ---------- */
+export default function HomeScreen() {
+  const [data,setData] = useState<LaundryDoc[]>([]);
+  const [loading,setLoading] = useState(true);
+  const [tick,setTick] = useState(0);         // trigger re‑render tiap 1 detik
+  const user = auth.currentUser;
 
+  /* realtime listener */
   useEffect(() => {
-    fetchLaundryData();
-
-    const auth = getAuth();
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        const nameFromEmail = user.email?.split("@")[0];
-        setUsername(user.displayName || nameFromEmail || "User");
-      }
+    if (!user) return;
+    const q = query(collection(db,"laundry"), where("ownerId","==",user.uid));
+    const unsub = onSnapshot(q, snap => {
+      const list: LaundryDoc[] = snap.docs.map(d => ({ id:d.id, ...d.data() } as any));
+      // urutkan: yang belum diambil / proses di atas
+      list.sort((a,b) => a.status.localeCompare(b.status));
+      setData(list);
+      setLoading(false);
     });
+    return unsub;
+  }, [user]);
 
-    return () => unsubscribe();
+  /* 1 detik ticker */
+  useEffect(() => {
+    const id = setInterval(() => setTick(t=>t+1), 1000);
+    return () => clearInterval(id);
   }, []);
 
-  const renderStatus = (status: string) => {
-    switch (status) {
-      case "Sedang Diproses":
-        return (
-          <Text style={[styles.status, styles.statusBlue]}>
-            🌀 Sedang Diproses
-          </Text>
-        );
-      case "Telah Diambil":
-        return (
-          <Text style={[styles.status, styles.statusGreen]}>
-            ✅ Telah Diambil
-          </Text>
-        );
-      case "Belum Diambil":
-        return (
-          <Text style={[styles.status, styles.statusOrange]}>
-            ⚠️ Belum Diambil
-          </Text>
-        );
-      default:
-        return null;
+  /* render ----- */
+  const renderItem = ({item}: {item: LaundryDoc}) => {
+    const [bg,fg,icon] = STATUS_META[item.status];
+    /* countdown */
+    let countdown = "";
+    if (item.deadline instanceof Timestamp) {
+      const diff = item.deadline.toDate().getTime() - Date.now();
+      const dur  = moment.duration(diff);
+      const h = Math.abs(dur.hours()).toString().padStart(2,"0");
+      const m = Math.abs(dur.minutes()).toString().padStart(2,"0");
+      const s = Math.abs(dur.seconds()).toString().padStart(2,"0");
+      countdown = `${diff<0?"-":""}${h}:${m}:${s}`;
     }
-  };
-
-  const renderCountdown = (deadline: any) => {
-    const deadlineTime = deadline.toDate();
-    const now = new Date();
-    const duration = moment.duration(moment(deadlineTime).diff(moment(now)));
-
-    const isLate = duration.asMilliseconds() < 0;
-
-    const hours = Math.abs(duration.hours()).toString().padStart(2, "0");
-    const minutes = Math.abs(duration.minutes()).toString().padStart(2, "0");
-    const seconds = Math.abs(duration.seconds()).toString().padStart(2, "0");
 
     return (
-      <Text style={[styles.deadline, isLate ? styles.late : styles.onTime]}>
-        Sisa {isLate ? "-" : ""}
-        {hours}:{minutes}:{seconds}
-      </Text>
+      <View style={styles.card}>
+        {/* header */}
+        <View style={styles.cardHeader}>
+          <View>
+            <Text style={styles.name}>{item.name}</Text>
+            <Text style={styles.phone}>{item.phone}</Text>
+          </View>
+          <View style={[styles.statusChip,{backgroundColor:bg}]}>
+            <Text style={{color:fg,fontSize:12, fontWeight:"700"}}>
+              {icon} {item.status}
+            </Text>
+          </View>
+        </View>
+
+        {/* detail items */}
+        <Text style={styles.detailTitle}>Detail Cucian :</Text>
+        {item.items.map((it,idx)=>(
+          <Text key={idx} style={styles.itemText}>• {it}</Text>
+        ))}
+
+        {/* countdown */}
+        {item.deadline &&
+          <Text style={[
+              styles.deadline,
+              (item.deadline.toMillis() < Date.now()) ? styles.late : styles.onTime
+            ]}>
+            Sisa {countdown}
+          </Text>}
+      </View>
     );
   };
 
+  if (loading) return <ActivityIndicator size="large" color="#007AFF" style={{flex:1}}/>;
+
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Hai, {username} 👋</Text>
-      <Text style={styles.subHeader}>List Laundry Hari Ini</Text>
+      <Text style={styles.header}>Hai, {user?.displayName ?? "User"} 👋</Text>
+      <Text style={styles.subHeader}>List Laundry Hari Ini</Text>
 
-      {loading ? (
-        <ActivityIndicator size="large" color="#007AFF" />
-      ) : (
-        <ScrollView>
-          {laundryList.map((item) => (
-            <View key={item.id} style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Text style={styles.name}>{item.name}</Text>
-                {renderStatus(item.status)}
-              </View>
-              <Text style={styles.phone}>{item.phone}</Text>
-              <Text style={styles.detailTitle}>Detail Cucian :</Text>
-              {item.items.map((itemName, index) => (
-                <Text key={index} style={styles.itemText}>
-                  • {itemName}
-                </Text>
-              ))}
-              {renderCountdown(item.deadline)}
-            </View>
-          ))}
-        </ScrollView>
-      )}
+      <FlatList
+        data={data}
+        keyExtractor={i=>i.id}
+        renderItem={renderItem}
+        contentContainerStyle={{paddingBottom:120}}
+      />
     </View>
   );
-};
+}
 
+/* ---------- styles ---------- */
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F6FCFF",
-    padding: 40,
-  },
-  header: {
-    fontSize: 20,
-    fontWeight: "bold",
-    marginBottom: 10,
-  },
-  subHeader: {
-    fontSize: 16,
-    marginBottom: 16,
-  },
-  card: {
-    backgroundColor: "white",
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-    borderColor: "#D6EBFF",
-    borderWidth: 1,
-  },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  name: {
-    fontWeight: "bold",
-    fontSize: 16,
-  },
-  phone: {
-    fontSize: 14,
-    marginBottom: 4,
-  },
-  detailTitle: {
-    marginTop: 6,
-    fontWeight: "600",
-  },
-  itemText: {
-    fontSize: 14,
-  },
-  status: {
-    fontSize: 12,
-    fontWeight: "bold",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    overflow: "hidden",
-  },
-  statusBlue: {
-    backgroundColor: "#E1F0FF",
-    color: "#007AFF",
-  },
-  statusGreen: {
-    backgroundColor: "#E0FFE5",
-    color: "#28A745",
-  },
-  statusOrange: {
-    backgroundColor: "#FFF3CD",
-    color: "#FFA500",
-  },
-  deadline: {
-    textAlign: "right",
-    fontSize: 12,
-    marginTop: 8,
-    fontWeight: "600",
-  },
-  late: {
-    color: "#FF3B30",
-  },
-  onTime: {
-    color: "#007AFF",
-  },
+  container:{flex:1,backgroundColor:"#F6FCFF",padding:20},
+  header:{fontSize:20,fontWeight:"bold",marginBottom:8},
+  subHeader:{fontSize:16,marginBottom:12},
+  card:{backgroundColor:"#fff",borderRadius:12,padding:12,marginBottom:12,
+        borderColor:"#D6EBFF",borderWidth:1},
+  cardHeader:{flexDirection:"row",justifyContent:"space-between",marginBottom:4},
+  name:{fontWeight:"700",fontSize:16},
+  phone:{fontSize:14},
+  statusChip:{borderRadius:8,paddingHorizontal:6,paddingVertical:2,alignSelf:"flex-start"},
+  detailTitle:{marginTop:4,fontWeight:"600"},
+  itemText:{fontSize:14},
+  deadline:{textAlign:"right",fontSize:12,fontWeight:"600",marginTop:6},
+  onTime:{color:"#007AFF"},
+  late:{color:"#FF3B30"},
 });
-
-export default HomeScreen;
