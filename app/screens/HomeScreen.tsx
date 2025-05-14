@@ -224,7 +224,7 @@ const shown = data.filter(d => {
   return(
     <View style={styles.container}>
       <Text style={styles.header}>Hai, {user?.displayName||'User'} 👋</Text>
-      <Text style={styles.subHeader}>List Laundry Hari Ini</Text>
+      <Text style={styles.subHeader}>List Laundry</Text>
 
       {/* search & filter */}
       <View style={styles.toolsRow}>
