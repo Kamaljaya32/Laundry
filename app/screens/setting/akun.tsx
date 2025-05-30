@@ -3,22 +3,37 @@ import {
   View,
   Text,
   TextInput,
-  TouchableOpacity,
   StyleSheet,
   Image,
   ScrollView,
   Alert,
+  Platform,
+  TouchableOpacity,
 } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
-import { db, auth } from "../../../config/private-config/config/firebaseConfig"; // pastikan path sesuai
+import {
+  getStorage,
+  ref as storageRef,
+  uploadBytes,
+  getDownloadURL,
+} from "firebase/storage";
+import {
+  db,
+  auth,
+  app,
+} from "../../../config/private-config/config/firebaseConfig";
+
+const storage = getStorage(app);
 
 export default function Akun() {
-  const [uid, setUid] = useState("");
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [address, setAddress] = useState("");
+  const [uid, setUid] = useState<string>("");
+  const [name, setName] = useState<string>("");
+  const [phone, setPhone] = useState<string>("");
+  const [email, setEmail] = useState<string>("");
+  const [address, setAddress] = useState<string>("");
+  const [avatar, setAvatar] = useState<string | null>(null); // local URI or remote URL
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -32,26 +47,115 @@ export default function Akun() {
           setPhone(data.phone || "");
           setEmail(data.email || "");
           setAddress(data.address || "");
+          setAvatar(data.avatarUrl || null);
         }
       }
     });
-
     return () => unsubscribe();
   }, []);
 
+  const requestCameraPermissions = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Izin diperlukan", "Akses kamera diperlukan.");
+      return false;
+    }
+    return true;
+  };
+
+  const requestMediaLibraryPermissions = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Izin diperlukan", "Akses galeri diperlukan.");
+      return false;
+    }
+    return true;
+  };
+
+  const pickImage = async () => {
+    if (!(await requestMediaLibraryPermissions())) return;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (!result.canceled) {
+      setAvatar(result.assets[0].uri);
+    }
+  };
+
+  const takePhoto = async () => {
+    if (!(await requestCameraPermissions())) return;
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (!result.canceled) {
+      setAvatar(result.assets[0].uri);
+    }
+  };
+
+  const handleEditPhoto = () => {
+    if (Platform.OS === "ios") {
+      import("react-native").then(({ ActionSheetIOS }) =>
+        ActionSheetIOS.showActionSheetWithOptions(
+          {
+            options: ["Cancel", "Choose Photo", "Take Photo", "Delete Photo"],
+            cancelButtonIndex: 0,
+            destructiveButtonIndex: 3,
+          },
+          (buttonIndex) => {
+            if (buttonIndex === 1) pickImage();
+            else if (buttonIndex === 2) takePhoto();
+            else if (buttonIndex === 3) setAvatar(null);
+          }
+        )
+      );
+    } else {
+      Alert.alert("Edit Foto", "Pilih tindakan", [
+        { text: "Choose Photo", onPress: pickImage, style: "default" },
+        { text: "Take Photo", onPress: takePhoto, style: "default" },
+        {
+          text: "Delete Photo",
+          onPress: () => setAvatar(null),
+          style: "destructive",
+        },
+        { text: "Cancel", style: "cancel" },
+      ]);
+    }
+  };
+
+  const uploadPhotoToFirebase = async (): Promise<string | null> => {
+    // Jika avatar baru adalah URI (bukan URL), lakukan upload
+    if (avatar && !avatar.startsWith("http")) {
+      const fileRef = storageRef(storage, `profile_photos/${uid}.jpg`);
+      const response = await fetch(avatar);
+      const blob = await response.blob();
+      await uploadBytes(fileRef, blob);
+      const downloadURL = await getDownloadURL(fileRef);
+      return downloadURL;
+    }
+    // Jika sudah URL atau tidak ada, kembalikan apa adanya
+    return avatar;
+  };
+
   const handleUpdate = async () => {
     if (!uid) return;
-
     try {
+      const newAvatarUrl = await uploadPhotoToFirebase();
       await updateDoc(doc(db, "users", uid), {
         name,
         phone,
         email,
         address,
+        avatarUrl: newAvatarUrl,
       });
+      setAvatar(newAvatarUrl);
       Alert.alert("Sukses", "Data berhasil diperbarui!");
     } catch (error) {
-      console.error("Update error:", error);
+      console.error(error);
       Alert.alert("Gagal", "Terjadi kesalahan saat memperbarui data.");
     }
   };
@@ -61,15 +165,18 @@ export default function Akun() {
       <Text style={styles.header}>Pengaturan Akun</Text>
       <ScrollView contentContainerStyle={styles.card}>
         <View style={styles.profilePhotoContainer}>
-          <View style={styles.photoCircle} />
-          <TouchableOpacity style={styles.uploadIcon}>
-            <Text style={{ color: "#fff", fontWeight: "bold" }}>✏️</Text>
+          <Image
+            source={
+              avatar
+                ? { uri: avatar }
+                : require("../../../assets/images/default-avatar.jpg")
+            }
+            style={styles.photoCircle}
+          />
+          <TouchableOpacity onPress={handleEditPhoto}>
+            <Text style={styles.editPhotoLink}>Edit Photo</Text>
           </TouchableOpacity>
         </View>
-        <Text style={styles.uploadText}>Upload Photo</Text>
-        <Text style={styles.photoNote}>
-          Format should be in .jpeg, .png at least 800x800px and less than 5MB
-        </Text>
 
         <Text style={styles.label}>Nama</Text>
         <TextInput
@@ -106,7 +213,10 @@ export default function Akun() {
           multiline
         />
 
-        <TouchableOpacity style={styles.updateButton} onPress={handleUpdate}>
+        <TouchableOpacity
+          style={styles.updateButtonWrapper}
+          onPress={handleUpdate}
+        >
           <Text style={styles.updateButtonText}>Update</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -115,10 +225,7 @@ export default function Akun() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#eaf5ff",
-  },
+  container: { flex: 1, backgroundColor: "#eaf5ff" },
   header: {
     fontSize: 20,
     fontWeight: "bold",
@@ -134,37 +241,20 @@ const styles = StyleSheet.create({
   },
   profilePhotoContainer: {
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: 16,
   },
   photoCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     backgroundColor: "#d9d9d9",
-    justifyContent: "center",
-    alignItems: "center",
+    resizeMode: "cover",
   },
-  uploadIcon: {
-    position: "absolute",
-    right: 0,
-    bottom: 0,
-    backgroundColor: "#007AFF",
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  uploadText: {
-    textAlign: "center",
-    fontWeight: "500",
+  editPhotoLink: {
+    color: "#007AFF",
+    fontSize: 14,
+    fontWeight: "600",
     marginTop: 8,
-  },
-  photoNote: {
-    textAlign: "center",
-    fontSize: 10,
-    color: "#888",
-    marginBottom: 16,
   },
   label: {
     fontWeight: "500",
@@ -179,17 +269,16 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     backgroundColor: "#fff",
   },
-  updateButton: {
+  updateButtonWrapper: {
     backgroundColor: "#007AFF",
     paddingVertical: 14,
     borderRadius: 10,
     marginTop: 24,
-    marginBottom: 16,
+    alignItems: "center",
   },
   updateButtonText: {
     color: "#fff",
     fontWeight: "600",
-    textAlign: "center",
     fontSize: 16,
   },
 });
