@@ -28,6 +28,8 @@ type ScanDevicesResult = {
   paired: string;
 };
 
+// Main application component
+// This component handles the Bluetooth connection and device management
 function App() {
   const [pairedDevices, setPairedDevices] = useState<BluetoothDevice[]>([]);
   const [foundDs, setFoundDs] = useState<BluetoothDevice[]>([]);
