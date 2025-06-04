@@ -162,26 +162,144 @@ function NumberBox({label,value,color}:{label:string;value:number;color:string})
     </View>
   );
 }
-function Legend({color,label,style}:{color:string;label:string;style?:object}){
-  return(
-    <View style={[{flexDirection:'row',alignItems:'center'},style]}>
-      <View style={{width:10,height:10,borderRadius:5,backgroundColor:color,marginRight:6}}/>
-      <Text style={{fontSize:12,color:'#555'}}>{label}</Text>
-    </View>
-  );
-}
 
-/* ---------- styles ---------- */
 const styles = StyleSheet.create({
-  card:{backgroundColor:'#fff',borderRadius:12,padding:16,marginBottom:16,elevation:1},
-  cardTitle:{fontSize:18,fontWeight:'bold',marginBottom:4},
-  rowWrap:{flexDirection:'row',justifyContent:'space-between',marginBottom:16},
-  smallCard:{flex:1,backgroundColor:'#fff',borderRadius:12,padding:16,elevation:1,marginHorizontal:4},
-  cardCenter:{backgroundColor:'#fff',borderRadius:12,padding:20,alignItems:'center',elevation:1},
-  fab:{position:'absolute',right:24,bottom:24,backgroundColor:'#007AFF',
-       width:56,height:56,borderRadius:28,justifyContent:'center',alignItems:'center',elevation:4},
-  modalBg:{flex:1,backgroundColor:'rgba(0,0,0,0.3)',justifyContent:'center',padding:24},
-  modalCard:{backgroundColor:'#fff',borderRadius:12,padding:20},
-  input:{backgroundColor:'#fff',borderRadius:10,padding:12,marginBottom:12,borderWidth:1,borderColor:'#ddd'},
-  btn:{flex:1,paddingVertical:12,borderRadius:10,alignItems:'center',marginHorizontal:4},
+  card: { 
+    backgroundColor: '#fff', 
+    borderRadius: 12, 
+    padding: 16, 
+    marginBottom: 16, 
+    elevation: 2 
+  },
+  cardTitle: { 
+    fontSize: 18, 
+    fontWeight: 'bold', 
+    marginBottom: 16 
+  },
+  filterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  yearInput: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 8,
+    width: 80,
+    textAlign: 'center',
+  },
+  monthBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginRight: 8,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 16,
+  },
+  monthBtnActive: {
+    backgroundColor: '#007AFF',
+  },
+  monthText: {
+    fontSize: 14,
+    color: '#333',
+  },
+  monthTextActive: {
+    color: '#fff',
+  },
+  rowWrap: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    marginBottom: 16 
+  },
+  numberBox: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    padding: 12,
+    marginHorizontal: 4,
+  },
+  numberLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 4,
+  },
+  numberValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  profitBox: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    padding: 16,
+    alignItems: 'center',
+  },
+  profitLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  profitValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  chartNote: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
+  },
+  actionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 8,
+  },
+  btnText: {
+    color: '#fff',
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  modalBg: { 
+    flex: 1, 
+    backgroundColor: 'rgba(0,0,0,0.5)', 
+    justifyContent: 'center', 
+    padding: 20 
+  },
+  modalCard: { 
+    backgroundColor: '#fff', 
+    borderRadius: 12, 
+    padding: 20 
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  input: { 
+    backgroundColor: '#f8f9fa', 
+    borderRadius: 8, 
+    padding: 12, 
+    marginBottom: 12, 
+    borderWidth: 1, 
+    borderColor: '#ddd' 
+  },
+  modalBtns: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  modalBtn: { 
+    flex: 1, 
+    paddingVertical: 12, 
+    borderRadius: 8, 
+    alignItems: 'center' 
+  },
 });
