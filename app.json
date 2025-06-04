@@ -15,7 +15,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/prjct.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "package": "com.anonymous.Laundry"
     },
     "web": {
       "bundler": "metro",
