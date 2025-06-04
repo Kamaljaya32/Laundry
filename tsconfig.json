@@ -13,5 +13,5 @@
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
-  ]
+, "app/screens/setting/ItemList.js", "app/screens/setting/printer.tsx"  ]
 }
