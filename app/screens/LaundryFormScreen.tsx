@@ -1,166 +1,277 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from "react";
 import {
-  View, Text, StyleSheet, TextInput, TouchableOpacity,
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
   ScrollView,
-} from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import DateTimePickerModal from 'react-native-modal-datetime-picker';
+} from "react-native";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import DateTimePickerModal from "react-native-modal-datetime-picker";
 import {
-  collection, query, where, onSnapshot,
-  doc, setDoc, updateDoc, serverTimestamp, increment,
-} from 'firebase/firestore';
-import { auth, db } from '../../config/private-config/config/firebaseConfig';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
-import * as Print    from 'expo-print';
-import * as Sharing  from 'expo-sharing';
+  collection,
+  query,
+  where,
+  onSnapshot,
+  doc,
+  setDoc,
+  updateDoc,
+  serverTimestamp,
+  increment,
+} from "firebase/firestore";
+import { auth, db } from "../../config/private-config/config/firebaseConfig";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
+import * as Print from "expo-print";
+import * as Sharing from "expo-sharing";
 
 /* ---------- types ---------- */
-type Step      = 0|1|2;
-type PayMethod = 'cash'|'qris'|'transfer'|'unpaid';
+type Step = 0 | 1 | 2;
+type PayMethod = "cash" | "qris" | "transfer" | "unpaid";
 
-interface LaundryItem { service:string; weight:string; price:string; note:string; }
-interface CustomerInfo{ id:string; name:string; phone:string; }
+interface LaundryItem {
+  service: string;
+  weight: string;
+  price: string;
+  note: string;
+}
+interface CustomerInfo {
+  id: string;
+  name: string;
+  phone: string;
+}
 
 /* ---------- komponen ---------- */
 export default function LaundryFormScreen() {
   /* step & order */
-  const [step,setStep] = useState<Step>(0);
-  const [orderId,setOrderId] = useState<number|null>(null);
+  const [step, setStep] = useState<Step>(0);
+  const [orderId, setOrderId] = useState<number | null>(null);
 
   /* pelanggan */
-  const [phoneText,setPhoneText] = useState('');
-  const [customers,setCustomers] = useState<CustomerInfo[]>([]);
-  const [selectedCust,setSelectedCust] = useState<CustomerInfo|null>(null);
+  const [phoneText, setPhoneText] = useState("");
+  const [customers, setCustomers] = useState<CustomerInfo[]>([]);
+  const [selectedCust, setSelectedCust] = useState<CustomerInfo | null>(null);
   const phoneInputRef = useRef<TextInput>(null);
 
   /* tanggal */
-  const [inDate,setInDate]   = useState<Date|null>(null);
-  const [outDate,setOutDate] = useState<Date|null>(null);
-  const [datePicker,setDatePicker] = useState({open:false,which:'in' as 'in'|'out'});
+  const [inDate, setInDate] = useState<Date | null>(null);
+  const [outDate, setOutDate] = useState<Date | null>(null);
+  const [datePicker, setDatePicker] = useState({
+    open: false,
+    which: "in" as "in" | "out",
+  });
 
   /* layanan */
-  const [items,setItems] = useState<LaundryItem[]>([{service:'',weight:'',price:'',note:''}]);
-  const [serviceOptions,setServiceOptions] = useState<string[]>([]);
-  const [openSvcIdx,setOpenSvcIdx] = useState<number|null>(null);
+  const [items, setItems] = useState<LaundryItem[]>([
+    { service: "", weight: "", price: "", note: "" },
+  ]);
+  const [serviceOptions, setServiceOptions] = useState<string[]>([]);
+  const [openSvcIdx, setOpenSvcIdx] = useState<number | null>(null);
 
   /* pembayaran */
-  const [pay,setPay] = useState<PayMethod>('unpaid');   // ▶️ default belum‑bayar
+  const [pay, setPay] = useState<PayMethod>("unpaid"); // ▶️ default belum‑bayar
 
   /* ---------- realtime pelanggan ---------- */
-  useEffect(()=>{
-    const u=auth.currentUser; if(!u) return;
-    const unsub=onSnapshot(
-      query(collection(db,'customers'),where('ownerId','==',u.uid)),
-      s=>setCustomers(s.docs.map(d=>({id:d.id,...d.data()}) as CustomerInfo))
+  useEffect(() => {
+    const u = auth.currentUser;
+    if (!u) return;
+    const unsub = onSnapshot(
+      query(collection(db, "customers"), where("ownerId", "==", u.uid)),
+      (s) =>
+        setCustomers(
+          s.docs.map((d) => ({ id: d.id, ...d.data() } as CustomerInfo))
+        )
     );
     return unsub;
-  },[]);
+  }, []);
 
   /* ---------- list layanan master ---------- */
-  useEffect(()=>{
-    const col=collection(db,'list_laundry');
-    const unsub=onSnapshot(col,s=>{
+  useEffect(() => {
+    const col = collection(db, "list_laundry");
+    const unsub = onSnapshot(col, (s) => {
       setServiceOptions(
-        s.docs.flatMap(d=>{
-          const data=d.data() as any;
-          if(Array.isArray(data.list)) return data.list;
-          if(typeof data.list==='string') return [data.list];
-          if(typeof data.name==='string') return [data.name];
+        s.docs.flatMap((d) => {
+          const data = d.data() as any;
+          if (Array.isArray(data.list)) return data.list;
+          if (typeof data.list === "string") return [data.list];
+          if (typeof data.name === "string") return [data.name];
           return [];
         })
       );
     });
     return unsub;
-  },[]);
+  }, []);
 
-  const filteredCust = customers.filter(c=>c.phone.includes(phoneText.trim()));
+  const filteredCust = customers.filter((c) =>
+    c.phone.includes(phoneText.trim())
+  );
 
   /* ---------- helpers ---------- */
   const totalHarga = items.reduce(
-    (s,i)=>s+parseFloat(i.price||'0')*parseFloat(i.weight||'0'),0);
+    (s, i) => s + parseFloat(i.price || "0") * parseFloat(i.weight || "0"),
+    0
+  );
 
-  const addService = ()=>setItems([...items,{service:'',weight:'',price:'',note:''}]);
-  const updateItem = (idx:number,key:keyof LaundryItem,val:string)=>{
-    const arr=[...items]; arr[idx][key]=val; setItems(arr);
+  const addService = () =>
+    setItems([...items, { service: "", weight: "", price: "", note: "" }]);
+  const updateItem = (idx: number, key: keyof LaundryItem, val: string) => {
+    const arr = [...items];
+    arr[idx][key] = val;
+    setItems(arr);
   };
 
   /* tanggal */
-  const openPicker=(w:'in'|'out')=>setDatePicker({open:true,which:w});
-  const closePicker=()=>setDatePicker(p=>({...p,open:false}));
-  const onConfirmDate=(d:Date)=>{
-    datePicker.which==='in'?setInDate(d):setOutDate(d); closePicker();
+  const openPicker = (w: "in" | "out") =>
+    setDatePicker({ open: true, which: w });
+  const closePicker = () => setDatePicker((p) => ({ ...p, open: false }));
+  const onConfirmDate = (d: Date) => {
+    datePicker.which === "in" ? setInDate(d) : setOutDate(d);
+    closePicker();
   };
 
   /* generate orderNo */
-  useEffect(()=>{ if(step===2 && !orderId) setOrderId(Date.now()); },[step,orderId]);
+  useEffect(() => {
+    if (step === 2 && !orderId) setOrderId(Date.now());
+  }, [step, orderId]);
 
   /* ---------- simpan ---------- */
-  const saveOrder = async ()=>{
-    if(!selectedCust) return alert('Pilih pelanggan terlebih dahulu!');
-    if(!orderId)      return alert('ID pesanan belum dibuat.');
+  const saveOrder = async () => {
+    if (!selectedCust) return alert("Pilih pelanggan terlebih dahulu!");
+    if (!orderId) return alert("ID pesanan belum dibuat.");
 
-    try{
+    try {
       /* a. tabel orders */
-      await setDoc(doc(db,'orders',orderId.toString()),{
-        orderNumber : orderId,
-        customerId  : selectedCust.id,
+      await setDoc(doc(db, "orders", orderId.toString()), {
+        orderNumber: orderId,
+        customerId: selectedCust.id,
         customerName: selectedCust.name,
-        phone       : selectedCust.phone,
-        inDate,outDate, items, total:totalHarga,
-        payment     : pay,
-        ownerId     : auth.currentUser?.uid,
-        createdAt   : serverTimestamp(),
+        phone: selectedCust.phone,
+        inDate,
+        outDate,
+        items,
+        total: totalHarga,
+        payment: pay,
+        ownerId: auth.currentUser?.uid,
+        createdAt: serverTimestamp(),
       });
 
       /* b. tabel laundry (dashboard) */
-      await setDoc(doc(db,'laundry',orderId.toString()),{
-        orderNumber : orderId,
-        name   : selectedCust.name,
-        phone  : selectedCust.phone,
-        items  : items.map(it=>`${it.service} ${it.weight}×`),
-        status : 'Sedang Diproses',
+      await setDoc(doc(db, "laundry", orderId.toString()), {
+        orderNumber: orderId,
+        name: selectedCust.name,
+        phone: selectedCust.phone,
+        items: items.map((it) => `${it.service} ${it.weight}×`),
+        status: "Sedang Diproses",
         payment: pay,
         deadline: outDate,
-        ownerId : auth.currentUser?.uid,
+        ownerId: auth.currentUser?.uid,
         createdAt: serverTimestamp(),
       });
 
       /* c. update total order pelanggan */
-      await updateDoc(doc(db,'customers',selectedCust.id),{ totalOrders: increment(1) });
+      await updateDoc(doc(db, "customers", selectedCust.id), {
+        totalOrders: increment(1),
+      });
 
-      alert('Pesanan tersimpan.');
+      alert("Pesanan tersimpan.");
       /* reset */
-      setStep(0); setOrderId(null); setSelectedCust(null); setPhoneText('');
-      setInDate(null); setOutDate(null);
-      setItems([{service:'',weight:'',price:'',note:''}]);
-      setPay('unpaid');
-    }catch(e:any){ alert(e.message); }
+      setStep(0);
+      setOrderId(null);
+      setSelectedCust(null);
+      setPhoneText("");
+      setInDate(null);
+      setOutDate(null);
+      setItems([{ service: "", weight: "", price: "", note: "" }]);
+      setPay("unpaid");
+    } catch (e: any) {
+      alert(e.message);
+    }
   };
 
   /* ---------- export PDF ---------- */
-  const exportToPdf = async ()=>{
-    const rows = items.map(
-      it=>`<tr><td>${it.service}</td><td style="text-align:center;">${it.weight}</td>
-      <td style="text-align:right;">Rp${(+it.price||0).toLocaleString('id-ID')}</td>
-      <td style="text-align:right;">Rp${((+it.price||0)*(+it.weight||0)).toLocaleString('id-ID')}</td></tr>`
-    ).join('');
-    const html=`
-      <html><head><meta charset="utf-8"/>
-      <style>body{font-family:Arial; margin:24px;} table{width:100%;border-collapse:collapse;font-size:12px;}
-      th,td{border:1px solid #ccc;padding:6px}</style></head><body>
-      <h2>Laundry Order #${orderId}</h2>
-      <p><b>Nama:</b> ${selectedCust?.name}<br/><b>No. WA:</b> ${selectedCust?.phone}</p>
-      <table><thead><tr><th>Layanan</th><th>Qty</th><th>Harga</th><th>Subtotal</th></tr></thead>
-      <tbody>${rows}</tbody>
-      <tfoot><tr><td colspan="3" style="text-align:right;font-weight:bold">TOTAL</td>
-      <td style="text-align:right;font-weight:bold">Rp ${totalHarga.toLocaleString('id-ID')}</td></tr></tfoot></table>
-      <p><b>Pembayaran:</b> ${
-        pay==='cash'?'Cash':pay==='qris'?'QRIS':pay==='transfer'?'Transfer':'Belum Bayar'
-      }</p></body></html>`;
-    const {uri}=await Print.printToFileAsync({html}); await Sharing.shareAsync(uri,{UTI:'.pdf',mimeType:'application/pdf'});
+  const exportToPdf = async () => {
+    const rows = items
+      .map(
+        (it) => `
+    <tr>
+      <td>${it.service}</td>
+      <td style="text-align:center;">${it.weight}</td>
+      <td style="text-align:right;">Rp${(+it.price || 0).toLocaleString(
+        "id-ID"
+      )}</td>
+      <td style="text-align:right;">Rp${(
+        (+it.price || 0) * (+it.weight || 0)
+      ).toLocaleString("id-ID")}</td>
+    </tr>`
+      )
+      .join("");
+
+    const html = `
+    <html>
+      <head>
+        <meta charset="utf-8"/>
+        <style>
+          body { font-family: Arial; margin: 24px; font-size: 12px; }
+          h1, h2, h3, h4, h5 { margin: 4px 0; }
+          .header { text-align: center; margin-bottom: 16px; }
+          table { width: 100%; border-collapse: collapse; font-size: 12px; }
+          th, td { border: 1px solid #ccc; padding: 6px; }
+          .right { text-align: right; }
+          .center { text-align: center; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h2>IFA CELL & LAUNDRY</h2>
+          <p>Jl. Bumi Tamalanrea Permai No.18, Tamalanrea, Kec. Tamalanrea<br/>
+          Kota Makassar, Sulawesi Selatan 90245<br/>
+          Telp: 082194822418</p>
+        </div>
+
+        <h3>Order #${orderId}</h3>
+        <p>
+          <b>Nama:</b> ${selectedCust?.name || "-"}<br/>
+          <b>No. WA:</b> ${selectedCust?.phone || "-"}
+        </p>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Layanan</th>
+              <th>Qty</th>
+              <th>Harga</th>
+              <th>Subtotal</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="3" class="right"><b>TOTAL</b></td>
+              <td class="right"><b>Rp ${totalHarga.toLocaleString(
+                "id-ID"
+              )}</b></td>
+            </tr>
+          </tfoot>
+        </table>
+
+        <p><b>Pembayaran:</b> ${
+          pay === "cash"
+            ? "Cash"
+            : pay === "qris"
+            ? "QRIS"
+            : pay === "transfer"
+            ? "Transfer"
+            : "Belum Bayar"
+        }</p>
+      </body>
+    </html>`;
+
+    const { uri } = await Print.printToFileAsync({ html });
+    await Sharing.shareAsync(uri, { UTI: ".pdf", mimeType: "application/pdf" });
   };
-
-
+  
   /* ───────────── step 0: laundry ───────────── */
   const renderLaundryStep = () => (
     <KeyboardAwareScrollView
@@ -176,7 +287,7 @@ export default function LaundryFormScreen() {
           placeholder="Nomor Telepon / WhatsApp"
           value={selectedCust ? selectedCust.phone : phoneText}
           keyboardType="phone-pad"
-          onChangeText={t => {
+          onChangeText={(t) => {
             setSelectedCust(null);
             setPhoneText(t);
           }}
@@ -185,8 +296,11 @@ export default function LaundryFormScreen() {
         />
 
         {phoneText.length > 0 && !selectedCust && (
-          <ScrollView style={styles.autoList} keyboardShouldPersistTaps="handled">
-            {filteredCust.map(c => (
+          <ScrollView
+            style={styles.autoList}
+            keyboardShouldPersistTaps="handled"
+          >
+            {filteredCust.map((c) => (
               <TouchableOpacity
                 key={c.id}
                 onPress={() => {
@@ -194,7 +308,9 @@ export default function LaundryFormScreen() {
                   setPhoneText(c.phone);
                 }}
               >
-                <Text style={styles.autoItem}>{c.phone} · {c.name}</Text>
+                <Text style={styles.autoItem}>
+                  {c.phone} · {c.name}
+                </Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -205,27 +321,39 @@ export default function LaundryFormScreen() {
       <TextInput
         placeholder="Nama Pelanggan"
         style={styles.input}
-        value={selectedCust ? selectedCust.name : ''}
+        value={selectedCust ? selectedCust.name : ""}
         editable={false}
       />
 
       {/* tanggal */}
       <View style={styles.row}>
-        <TouchableOpacity style={[styles.input, { flex: 1, marginRight: 6 }]} onPress={() => openPicker('in')}>
-          <Text style={{ color: inDate ? '#000' : '#888' }}>
-            {inDate ? inDate.toLocaleDateString() : 'Tanggal Masuk'}
+        <TouchableOpacity
+          style={[styles.input, { flex: 1, marginRight: 6 }]}
+          onPress={() => openPicker("in")}
+        >
+          <Text style={{ color: inDate ? "#000" : "#888" }}>
+            {inDate ? inDate.toLocaleDateString() : "Tanggal Masuk"}
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.input, { flex: 1, marginLeft: 6 }]} onPress={() => openPicker('out')}>
-          <Text style={{ color: outDate ? '#000' : '#888' }}>
-            {outDate ? outDate.toLocaleDateString() : 'Tanggal Keluar'}
+        <TouchableOpacity
+          style={[styles.input, { flex: 1, marginLeft: 6 }]}
+          onPress={() => openPicker("out")}
+        >
+          <Text style={{ color: outDate ? "#000" : "#888" }}>
+            {outDate ? outDate.toLocaleDateString() : "Tanggal Keluar"}
           </Text>
         </TouchableOpacity>
       </View>
 
       {/* layanan list */}
       {items.map((it, i) => (
-        <View key={i} style={[styles.card, { marginBottom: 16, backgroundColor: '#EAF4FF' }]}>
+        <View
+          key={i}
+          style={[
+            styles.card,
+            { marginBottom: 16, backgroundColor: "#EAF4FF" },
+          ]}
+        >
           <Text style={styles.cardTitle}>Layanan #{i + 1}</Text>
 
           {/* input + autocomplete layanan */}
@@ -234,8 +362,8 @@ export default function LaundryFormScreen() {
               style={styles.input}
               placeholder="Jenis Layanan"
               value={it.service}
-              onChangeText={t => {
-                updateItem(i, 'service', t);
+              onChangeText={(t) => {
+                updateItem(i, "service", t);
                 setOpenSvcIdx(i);
               }}
               onFocus={() => setOpenSvcIdx(i)}
@@ -243,14 +371,19 @@ export default function LaundryFormScreen() {
             />
 
             {openSvcIdx === i && it.service.length > 0 && (
-              <ScrollView style={styles.autoList} keyboardShouldPersistTaps="handled">
+              <ScrollView
+                style={styles.autoList}
+                keyboardShouldPersistTaps="handled"
+              >
                 {serviceOptions
-                  .filter(opt => opt.toLowerCase().includes(it.service.toLowerCase()))
-                  .map(opt => (
+                  .filter((opt) =>
+                    opt.toLowerCase().includes(it.service.toLowerCase())
+                  )
+                  .map((opt) => (
                     <TouchableOpacity
                       key={opt}
                       onPress={() => {
-                        updateItem(i, 'service', opt);
+                        updateItem(i, "service", opt);
                         setOpenSvcIdx(null);
                       }}
                     >
@@ -268,19 +401,24 @@ export default function LaundryFormScreen() {
               style={[styles.numericInput, { flex: 1, marginRight: 6 }]}
               keyboardType="decimal-pad"
               value={it.weight}
-              onChangeText={t => updateItem(i, 'weight', t)}
+              onChangeText={(t) => updateItem(i, "weight", t)}
             />
             <TextInput
               placeholder="Harga Satuan"
               style={[styles.numericInput, { flex: 1, marginLeft: 6 }]}
               keyboardType="decimal-pad"
               value={it.price}
-              onChangeText={t => updateItem(i, 'price', t)}
+              onChangeText={(t) => updateItem(i, "price", t)}
             />
             <TextInput
               placeholder="Subtotal (Rp)"
-              style={[styles.readonlyInput, { flex: 1, marginLeft: 6, textAlign: 'center' }]}
-              value={(parseFloat(it.weight || '0') * parseFloat(it.price || '0')).toLocaleString('id-ID')}
+              style={[
+                styles.readonlyInput,
+                { flex: 1, marginLeft: 6, textAlign: "center" },
+              ]}
+              value={(
+                parseFloat(it.weight || "0") * parseFloat(it.price || "0")
+              ).toLocaleString("id-ID")}
               editable={false}
             />
           </View>
@@ -290,20 +428,24 @@ export default function LaundryFormScreen() {
             style={[styles.input, { height: 70 }]}
             multiline
             value={it.note}
-            onChangeText={t => updateItem(i, 'note', t)}
+            onChangeText={(t) => updateItem(i, "note", t)}
           />
 
           {i === items.length - 1 && (
             <TouchableOpacity onPress={addService} style={{ marginTop: 8 }}>
-              <Text style={{ color: '#007AFF', textAlign: 'center' }}>+ Tambah Layanan</Text>
+              <Text style={{ color: "#007AFF", textAlign: "center" }}>
+                + Tambah Layanan
+              </Text>
             </TouchableOpacity>
           )}
         </View>
       ))}
 
       <View style={styles.totalContainer}>
-        <Text style={{ fontWeight: 'bold' }}>Estimasi Total :</Text>
-        <Text style={{ fontWeight: 'bold' }}>Rp {totalHarga.toLocaleString('id-ID')}</Text>
+        <Text style={{ fontWeight: "bold" }}>Estimasi Total :</Text>
+        <Text style={{ fontWeight: "bold" }}>
+          Rp {totalHarga.toLocaleString("id-ID")}
+        </Text>
       </View>
 
       <TouchableOpacity style={styles.btnNext} onPress={() => setStep(1)}>
@@ -314,39 +456,69 @@ export default function LaundryFormScreen() {
 
   /* ---------- STEP 1 (pembayaran) ---------- */
   const renderPaymentStep = () => (
-    <View style={{flex:1,padding:16}}>
-      <TouchableOpacity onPress={()=>setStep(0)} style={{flexDirection:'row',alignItems:'center',marginBottom:16}}>
-        <Ionicons name="arrow-back" size={20} color="#007AFF"/><Text style={{color:'#007AFF',marginLeft:4}}>Kembali</Text>
+    <View style={{ flex: 1, padding: 16 }}>
+      <TouchableOpacity
+        onPress={() => setStep(0)}
+        style={{ flexDirection: "row", alignItems: "center", marginBottom: 16 }}
+      >
+        <Ionicons name="arrow-back" size={20} color="#007AFF" />
+        <Text style={{ color: "#007AFF", marginLeft: 4 }}>Kembali</Text>
       </TouchableOpacity>
 
       {/* detail pelanggan */}
       <View style={styles.card}>
-        <Text style={{fontWeight:'bold',marginBottom:8}}>Detail Pelanggan</Text>
+        <Text style={{ fontWeight: "bold", marginBottom: 8 }}>
+          Detail Pelanggan
+        </Text>
         <Text>Nama  : {selectedCust?.name}</Text>
         <Text>No WA : {selectedCust?.phone}</Text>
-        <Text>Total : Rp {totalHarga.toLocaleString('id-ID')}</Text>
+        <Text>Total : Rp {totalHarga.toLocaleString("id-ID")}</Text>
       </View>
 
       {/* opsi bayar */}
-      <View style={[styles.card,{marginTop:16}]}>
-        <Text style={{fontWeight:'bold',marginBottom:12}}>Metode Pembayaran</Text>
-        {(['cash','qris','transfer','unpaid'] as const).map(m=>(
-          <TouchableOpacity key={m}
-            style={[styles.paymentOption, pay===m && styles.paymentOptionSelected]}
-            onPress={()=>setPay(m)}>
+      <View style={[styles.card, { marginTop: 16 }]}>
+        <Text style={{ fontWeight: "bold", marginBottom: 12 }}>
+          Metode Pembayaran
+        </Text>
+        {(["cash", "qris", "transfer", "unpaid"] as const).map((m) => (
+          <TouchableOpacity
+            key={m}
+            style={[
+              styles.paymentOption,
+              pay === m && styles.paymentOptionSelected,
+            ]}
+            onPress={() => setPay(m)}
+          >
             <Ionicons
               name={
-                m==='cash'?'cash':m==='qris'?'qr-code-outline':
-                m==='transfer'?'swap-horizontal-outline':'alert-circle-outline'}
-              size={20} color="#555"/>
+                m === "cash"
+                  ? "cash"
+                  : m === "qris"
+                  ? "qr-code-outline"
+                  : m === "transfer"
+                  ? "swap-horizontal-outline"
+                  : "alert-circle-outline"
+              }
+              size={20}
+              color="#555"
+            />
             <Text style={styles.paymentText}>
-              {m==='cash'?'Cash':m==='qris'?'QRIS':m==='transfer'?'Transfer':'Belum Bayar'}
+              {m === "cash"
+                ? "Cash"
+                : m === "qris"
+                ? "QRIS"
+                : m === "transfer"
+                ? "Transfer"
+                : "Belum Bayar"}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      <TouchableOpacity style={[styles.btnNext,{marginTop:20}]} onPress={()=>setStep(2)}>
+      <TouchableOpacity
+        style={[styles.btnNext, { marginTop: 20 }]}
+        onPress={() => setStep(2)}
+      >
         <Text style={styles.btnTxt}>Lanjut Review Pesanan</Text>
       </TouchableOpacity>
     </View>
@@ -355,9 +527,14 @@ export default function LaundryFormScreen() {
   /* ───────────── step 2: review ───────────── */
   const renderReviewStep = () => (
     <ScrollView style={{ padding: 16 }}>
-      <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16 }}>Review Pesanan</Text>
+      <Text style={{ fontSize: 18, fontWeight: "bold", marginBottom: 16 }}>
+        Review Pesanan
+      </Text>
 
-      <View style={styles.card}><Text style={styles.cardTitle}>Nomor Pesanan</Text><Text>{orderId}</Text></View>
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Nomor Pesanan</Text>
+        <Text>{orderId}</Text>
+      </View>
 
       <View style={[styles.card, { marginTop: 16 }]}>
         <Text style={styles.cardTitle}>Pelanggan</Text>
@@ -371,26 +548,47 @@ export default function LaundryFormScreen() {
         <Text style={styles.cardTitle}>Detail Layanan</Text>
         {items.map((it, i) => (
           <View key={i} style={{ marginBottom: 8 }}>
-            <Text>{it.service} · {it.weight}×Rp{it.price}</Text>
             <Text>
-              Subtotal: Rp {(parseFloat(it.weight || '0') * parseFloat(it.price || '0')).toLocaleString('id-ID')}
+              {it.service} · {it.weight}×Rp{it.price}
+            </Text>
+            <Text>
+              Subtotal: Rp{" "}
+              {(
+                parseFloat(it.weight || "0") * parseFloat(it.price || "0")
+              ).toLocaleString("id-ID")}
             </Text>
             {it.note ? <Text>Catatan: {it.note}</Text> : null}
           </View>
         ))}
-        <Text style={{ fontWeight: 'bold', marginTop: 8 }}>Total: Rp {totalHarga.toLocaleString('id-ID')}</Text>
+        <Text style={{ fontWeight: "bold", marginTop: 8 }}>
+          Total: Rp {totalHarga.toLocaleString("id-ID")}
+        </Text>
       </View>
 
       <View style={[styles.card, { marginTop: 16 }]}>
         <Text style={styles.cardTitle}>Metode Pembayaran</Text>
-        <Text>{pay === 'cash' ? 'Cash' : pay === 'qris' ? 'QRIS' : pay === 'transfer' ? 'Transfer' : 'Belum Bayar'}</Text>
+        <Text>
+          {pay === "cash"
+            ? "Cash"
+            : pay === "qris"
+            ? "QRIS"
+            : pay === "transfer"
+            ? "Transfer"
+            : "Belum Bayar"}
+        </Text>
       </View>
 
-      <TouchableOpacity style={[styles.btnNext, { marginTop: 20 }]} onPress={exportToPdf}>
+      <TouchableOpacity
+        style={[styles.btnNext, { marginTop: 20 }]}
+        onPress={exportToPdf}
+      >
         <Text style={styles.btnTxt}>Simpan ke PDF</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={[styles.btnNext, { marginTop: 12 }]} onPress={saveOrder}>
+      <TouchableOpacity
+        style={[styles.btnNext, { marginTop: 12 }]}
+        onPress={saveOrder}
+      >
         <Text style={styles.btnTxt}>Simpan Pesanan</Text>
       </TouchableOpacity>
     </ScrollView>
@@ -398,20 +596,31 @@ export default function LaundryFormScreen() {
 
   /* ───────────── render utama ───────────── */
   return (
-    <View style={{ flex: 1, backgroundColor: '#F6FCFF' }}>
+    <View style={{ flex: 1, backgroundColor: "#F6FCFF" }}>
       <View style={styles.stepRow}>
-        {['bag-add-outline', 'wallet', 'checkmark-done'].map((ic, i) => (
+        {["bag-add-outline", "wallet", "checkmark-done"].map((ic, i) => (
           <View key={ic} style={styles.stepItem}>
-            <Ionicons name={ic as any} size={24} color={step >= i ? '#007AFF' : '#bbb'} />
-            <Text style={[styles.stepLabel, step >= i && { color: '#007AFF' }]}>{['Laundry', 'Bayar', 'Review'][i]}</Text>
+            <Ionicons
+              name={ic as any}
+              size={24}
+              color={step >= i ? "#007AFF" : "#bbb"}
+            />
+            <Text style={[styles.stepLabel, step >= i && { color: "#007AFF" }]}>
+              {["Laundry", "Bayar", "Review"][i]}
+            </Text>
           </View>
         ))}
       </View>
 
-      {step===0 && renderLaundryStep()}
-      {step===1 && renderPaymentStep()}
-      {step===2 && renderReviewStep()}
-      <DateTimePickerModal isVisible={datePicker.open} mode="date" onConfirm={onConfirmDate} onCancel={closePicker}/>
+      {step === 0 && renderLaundryStep()}
+      {step === 1 && renderPaymentStep()}
+      {step === 2 && renderReviewStep()}
+      <DateTimePickerModal
+        isVisible={datePicker.open}
+        mode="date"
+        onConfirm={onConfirmDate}
+        onCancel={closePicker}
+      />
     </View>
   );
 }
@@ -419,82 +628,89 @@ export default function LaundryFormScreen() {
 /* ─────────────── styles ─────────────── */
 const styles = StyleSheet.create({
   stepRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+    flexDirection: "row",
+    justifyContent: "space-around",
     paddingVertical: 15,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     elevation: 2,
   },
-  stepItem: { alignItems: 'center' },
-  stepLabel: { fontSize: 12, marginTop: 4, color: '#bbb' },
+  stepItem: { alignItems: "center" },
+  stepLabel: { fontSize: 12, marginTop: 4, color: "#bbb" },
 
   input: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 10,
     padding: 12,
     marginBottom: 12,
-    color: '#000',
+    color: "#000",
   },
   numericInput: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 10,
     padding: 12,
     marginBottom: 12,
-    color: '#000',
-    textAlign: 'center',
+    color: "#000",
+    textAlign: "center",
   },
   readonlyInput: {
-    backgroundColor: '#f2f2f2',
+    backgroundColor: "#f2f2f2",
     borderRadius: 10,
     padding: 12,
     marginBottom: 12,
-    color: '#555',
+    color: "#555",
   },
-  row: { flexDirection: 'row', marginBottom: 12 },
+  row: { flexDirection: "row", marginBottom: 12 },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 12,
     padding: 16,
     elevation: 1,
   },
-  cardTitle: { fontWeight: 'bold', marginBottom: 12, fontSize: 16 },
+  cardTitle: { fontWeight: "bold", marginBottom: 12, fontSize: 16 },
   btnNext: {
-    backgroundColor: '#007AFF',
+    backgroundColor: "#007AFF",
     borderRadius: 12,
     paddingVertical: 14,
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: 16,
   },
-  btnTxt: { color: '#fff', fontWeight: '600', fontSize: 16 },
+  btnTxt: { color: "#fff", fontWeight: "600", fontSize: 16 },
   totalContainer: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     padding: 16,
     borderRadius: 12,
     marginBottom: 16,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: 6,
   },
-  detailLabel: { color: '#555' },
-  detailValue: { fontWeight: 'bold', color: '#000' },
-  paymentOption:{flexDirection:'row',alignItems:'center',padding:12,borderRadius:10,
-                 borderWidth:1,borderColor:'#ccc',marginBottom:10},
-  paymentOptionSelected:{borderColor:'#007AFF',backgroundColor:'#EAF4FF'},
-  paymentText:{marginLeft:10,fontSize:16},
+  detailLabel: { color: "#555" },
+  detailValue: { fontWeight: "bold", color: "#000" },
+  paymentOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#ccc",
+    marginBottom: 10,
+  },
+  paymentOptionSelected: { borderColor: "#007AFF", backgroundColor: "#EAF4FF" },
+  paymentText: { marginLeft: 10, fontSize: 16 },
 
   /* autocomplete */
-  autoWrap: { position: 'relative', marginBottom: 12 },
+  autoWrap: { position: "relative", marginBottom: 12 },
   autoList: {
-    position: 'absolute',
+    position: "absolute",
     top: 52,
     left: 0,
     right: 0,
     maxHeight: 200,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 10,
     elevation: 2,
     zIndex: 20,
@@ -502,6 +718,6 @@ const styles = StyleSheet.create({
   autoItem: {
     padding: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: "#eee",
   },
 });
