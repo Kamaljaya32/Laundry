@@ -1,9 +1,16 @@
 import React from 'react';
-import { Button, StyleSheet, Text, View, Alert } from 'react-native';
+import { Button, StyleSheet, Text, View, Alert, Platform } from 'react-native';
 import { BluetoothEscposPrinter } from 'react-native-bluetooth-escpos-printer';
 
 const SamplePrint: React.FC = () => {
   const printBarCode = async () => {
+    if (Platform.OS === 'ios') {
+      Alert.alert(
+        'iOS Warning',
+        'iOS does not support printing receipts with this method. Please use the Android version.',
+        [{ text: 'OK' }]
+      );
+    }
     try {
       await BluetoothEscposPrinter.printBarCode(
         '123456789012',
@@ -20,6 +27,13 @@ const SamplePrint: React.FC = () => {
   };
 
   const printQRCode = async () => {
+    if (Platform.OS === 'ios') {
+      Alert.alert(
+        'iOS Warning',
+        'iOS does not support printing receipts with this method. Please use the Android version.',
+        [{ text: 'OK' }]
+      );
+    }
     try {
       await BluetoothEscposPrinter.printQRCode(
         'https://hsd.co.id',
@@ -33,6 +47,13 @@ const SamplePrint: React.FC = () => {
   };
 
   const printUnderLine = async () => {
+    if (Platform.OS === 'ios') {
+      Alert.alert(
+        'iOS Warning',
+        'iOS does not support printing receipts with this method. Please use the Android version.',
+        [{ text: 'OK' }]
+      );
+    }
     try {
       await BluetoothEscposPrinter.printerUnderLine(2);
       await BluetoothEscposPrinter.printText('Prawito Hudoro\r\n', {
@@ -50,6 +71,13 @@ const SamplePrint: React.FC = () => {
   };
 
   const printReceipt = async () => {
+    if (Platform.OS === 'ios') {
+      Alert.alert(
+        'iOS Warning',
+        'iOS does not support printing receipts with this method. Please use the Android version.',
+        [{ text: 'OK' }]
+      );
+    }
     const columnWidths = [5, 15, 12];
     try {
       await BluetoothEscposPrinter.printText('\r\n\r\n\r\n', {});
@@ -89,6 +117,13 @@ const SamplePrint: React.FC = () => {
   };
 
   const printOwnerReceipt = async () => {
+    if (Platform.OS === 'ios') {
+      Alert.alert(
+        'iOS Warning',
+        'iOS does not support printing receipts with this method. Please use the Android version.',
+        [{ text: 'OK' }]
+      );
+    }
     const columnWidths = [5, 15, 12];
     try {
       await BluetoothEscposPrinter.printText('COPY UNTUK OWNER\r\n\r\n', { widthtimes: 1 });
