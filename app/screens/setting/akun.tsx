@@ -19,6 +19,9 @@ import {
   uploadBytes,
   getDownloadURL,
 } from "firebase/storage";
+import { useNavigation } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
+
 import {
   db,
   auth,
@@ -28,12 +31,14 @@ import {
 const storage = getStorage(app);
 
 export default function Akun() {
+  const navigation = useNavigation();
+
   const [uid, setUid] = useState<string>("");
   const [name, setName] = useState<string>("");
   const [phone, setPhone] = useState<string>("");
   const [email, setEmail] = useState<string>("");
   const [address, setAddress] = useState<string>("");
-  const [avatar, setAvatar] = useState<string | null>(null); // local URI or remote URL
+  const [avatar, setAvatar] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -128,7 +133,6 @@ export default function Akun() {
   };
 
   const uploadPhotoToFirebase = async (): Promise<string | null> => {
-    // Jika avatar baru adalah URI (bukan URL), lakukan upload
     if (avatar && !avatar.startsWith("http")) {
       const fileRef = storageRef(storage, `profile_photos/${uid}.jpg`);
       const response = await fetch(avatar);
@@ -137,7 +141,6 @@ export default function Akun() {
       const downloadURL = await getDownloadURL(fileRef);
       return downloadURL;
     }
-    // Jika sudah URL atau tidak ada, kembalikan apa adanya
     return avatar;
   };
 
@@ -162,6 +165,14 @@ export default function Akun() {
 
   return (
     <View style={styles.container}>
+      {/* Tombol Kembali */}
+      <TouchableOpacity
+        onPress={() => navigation.goBack()}
+        style={styles.backButton}
+      >
+        <Ionicons name="arrow-back" size={24} color="#007AFF" />
+      </TouchableOpacity>
+
       <Text style={styles.header}>Pengaturan Akun</Text>
       <ScrollView contentContainerStyle={styles.card}>
         <View style={styles.profilePhotoContainer}>
@@ -225,12 +236,19 @@ export default function Akun() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#eaf5ff" },
+  container: { flex: 1, backgroundColor: "#F5F5F" },
+  backButton: {
+    position: "absolute",
+    top: 50,
+    left: 16,
+    zIndex: 1,
+  },
   header: {
     fontSize: 20,
     fontWeight: "bold",
     textAlign: "center",
     paddingVertical: 20,
+    marginTop: 40,
   },
   card: {
     backgroundColor: "#fff",
