@@ -36,4 +36,9 @@ firebaseConfig.js
 # typescript
 *.tsbuildinfo
 
+# Android build and Gradle
+android/.gradle/
+android/build/
+android/app/build/
+
 app-example
