@@ -6,6 +6,7 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
+  Modal,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import DateTimePickerModal from "react-native-modal-datetime-picker";
@@ -71,6 +72,14 @@ export default function LaundryFormScreen() {
   /* pembayaran */
   const [pay, setPay] = useState<PayMethod>("unpaid"); // ▶️ default belum‑bayar
 
+  /* discount */
+  const [discountType, setDiscountType] = useState<"nominal" | "percent">(
+    "nominal"
+  );
+  const [discountInput, setDiscountInput] = useState<string>("0");
+  const [discountAmount, setDiscountAmount] = useState<number>(0);
+  const [isDiscountModalVisible, setDiscountModalVisible] = useState(false);
+
   /* ---------- realtime pelanggan ---------- */
   useEffect(() => {
     const u = auth.currentUser;
@@ -111,6 +120,7 @@ export default function LaundryFormScreen() {
     (s, i) => s + parseFloat(i.price || "0") * parseFloat(i.weight || "0"),
     0
   );
+  const totalAfterDiscount = Math.max(0, totalHarga - discountAmount);
 
   const addService = () =>
     setItems([...items, { service: "", weight: "", price: "", note: "" }]);
@@ -150,6 +160,7 @@ export default function LaundryFormScreen() {
         outDate,
         items,
         total: totalHarga,
+        discount: discountAmount,
         payment: pay,
         ownerId: auth.currentUser?.uid,
         createdAt: serverTimestamp(),
@@ -164,6 +175,7 @@ export default function LaundryFormScreen() {
         status: "Sedang Diproses",
         payment: pay,
         deadline: outDate,
+        discount: discountAmount,
         ownerId: auth.currentUser?.uid,
         createdAt: serverTimestamp(),
       });
@@ -183,95 +195,65 @@ export default function LaundryFormScreen() {
       setOutDate(null);
       setItems([{ service: "", weight: "", price: "", note: "" }]);
       setPay("unpaid");
+      setDiscountAmount(0);
+      setDiscountInput("0");
     } catch (e: any) {
       alert(e.message);
     }
   };
 
   /* ---------- export PDF ---------- */
+  /* export PDF */
   const exportToPdf = async () => {
     const rows = items
       .map(
-        (it) => `
-    <tr>
-      <td>${it.service}</td>
-      <td style="text-align:center;">${it.weight}</td>
-      <td style="text-align:right;">Rp${(+it.price || 0).toLocaleString(
+        (it) => `<tr><td>${it.service}</td><td style=\"text-align:center;\">${
+          it.weight
+        }</td>
+      <td style=\"text-align:right;\">Rp${(+it.price || 0).toLocaleString(
         "id-ID"
       )}</td>
-      <td style="text-align:right;">Rp${(
+      <td style=\"text-align:right;\">Rp${(
         (+it.price || 0) * (+it.weight || 0)
-      ).toLocaleString("id-ID")}</td>
-    </tr>`
+      ).toLocaleString("id-ID")}</td></tr>`
       )
       .join("");
 
     const html = `
-    <html>
-      <head>
-        <meta charset="utf-8"/>
-        <style>
-          body { font-family: Arial; margin: 24px; font-size: 12px; }
-          h1, h2, h3, h4, h5 { margin: 4px 0; }
-          .header { text-align: center; margin-bottom: 16px; }
-          table { width: 100%; border-collapse: collapse; font-size: 12px; }
-          th, td { border: 1px solid #ccc; padding: 6px; }
-          .right { text-align: right; }
-          .center { text-align: center; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h2>IFA CELL & LAUNDRY</h2>
-          <p>Jl. Bumi Tamalanrea Permai No.18, Tamalanrea, Kec. Tamalanrea<br/>
-          Kota Makassar, Sulawesi Selatan 90245<br/>
-          Telp: 082194822418</p>
-        </div>
-
-        <h3>Order #${orderId}</h3>
-        <p>
-          <b>Nama:</b> ${selectedCust?.name || "-"}<br/>
-          <b>No. WA:</b> ${selectedCust?.phone || "-"}
-        </p>
-
-        <table>
-          <thead>
-            <tr>
-              <th>Layanan</th>
-              <th>Qty</th>
-              <th>Harga</th>
-              <th>Subtotal</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colspan="3" class="right"><b>TOTAL</b></td>
-              <td class="right"><b>Rp ${totalHarga.toLocaleString(
-                "id-ID"
-              )}</b></td>
-            </tr>
-          </tfoot>
-        </table>
-
-        <p><b>Pembayaran:</b> ${
-          pay === "cash"
-            ? "Cash"
-            : pay === "qris"
-            ? "QRIS"
-            : pay === "transfer"
-            ? "Transfer"
-            : "Belum Bayar"
-        }</p>
-      </body>
-    </html>`;
+      <html><head><meta charset=\"utf-8\"/>
+      <style>body{font-family:Arial; margin:24px;} table{width:100%;border-collapse:collapse;font-size:12px;}
+      th,td{border:1px solid #ccc;padding:6px}</style></head><body>
+      <h2>Laundry Order #${orderId}</h2>
+      <p><b>Nama:</b> ${selectedCust?.name}<br/><b>No. WA:</b> ${
+      selectedCust?.phone
+    }</p>
+      <table><thead><tr><th>Layanan</th><th>Qty</th><th>Harga</th><th>Subtotal</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot>
+        <tr><td colspan=\"3\" style=\"text-align:right;\">Diskon</td>
+            <td style=\"text-align:right;\">- Rp${discountAmount.toLocaleString(
+              "id-ID"
+            )}</td></tr>
+        <tr><td colspan=\"3\" style=\"text-align:right;font-weight:bold\">TOTAL</td>
+            <td style=\"text-align:right;font-weight:bold\">Rp ${(
+              totalHarga - discountAmount
+            ).toLocaleString("id-ID")}</td></tr>
+      </tfoot></table>
+      <p><b>Pembayaran:</b> ${
+        pay === "cash"
+          ? "Cash"
+          : pay === "qris"
+          ? "QRIS"
+          : pay === "transfer"
+          ? "Transfer"
+          : "Belum Bayar"
+      }</p>
+      </body></html>`;
 
     const { uri } = await Print.printToFileAsync({ html });
     await Sharing.shareAsync(uri, { UTI: ".pdf", mimeType: "application/pdf" });
   };
-  
+
   /* ───────────── step 0: laundry ───────────── */
   const renderLaundryStep = () => (
     <KeyboardAwareScrollView
@@ -454,7 +436,7 @@ export default function LaundryFormScreen() {
     </KeyboardAwareScrollView>
   );
 
-  /* ---------- STEP 1 (pembayaran) ---------- */
+  /* ---------- STEP 1 (pembayaran) ---------- */
   const renderPaymentStep = () => (
     <View style={{ flex: 1, padding: 16 }}>
       <TouchableOpacity
@@ -470,7 +452,7 @@ export default function LaundryFormScreen() {
         <Text style={{ fontWeight: "bold", marginBottom: 8 }}>
           Detail Pelanggan
         </Text>
-        <Text>Nama  : {selectedCust?.name}</Text>
+        <Text>Nama  : {selectedCust?.name}</Text>
         <Text>No WA : {selectedCust?.phone}</Text>
         <Text>Total : Rp {totalHarga.toLocaleString("id-ID")}</Text>
       </View>
@@ -509,7 +491,7 @@ export default function LaundryFormScreen() {
                 ? "QRIS"
                 : m === "transfer"
                 ? "Transfer"
-                : "Belum Bayar"}
+                : "Belum Bayar"}
             </Text>
           </TouchableOpacity>
         ))}
@@ -578,6 +560,35 @@ export default function LaundryFormScreen() {
         </Text>
       </View>
 
+      {/* Tagihan & Diskon */}
+      <View style={styles.cardBlue}>
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ fontWeight: "bold", color: "#fff" }}>Sisa Bayar</Text>
+          <Text style={{ fontWeight: "bold", color: "#fff" }}>
+            Rp {totalAfterDiscount.toLocaleString("id-ID")}
+          </Text>
+        </View>
+        {discountAmount > 0 && (
+          <Text style={{ color: "#ffdddd", marginTop: 4 }}>
+            Diskon: -Rp {discountAmount.toLocaleString("id-ID")}
+          </Text>
+        )}
+        <TouchableOpacity
+          style={styles.btnDiscount}
+          onPress={() => setDiscountModalVisible(true)}
+        >
+          <Text style={{ color: "#fff", fontWeight: "bold" }}>
+            Gunakan Diskon
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       <TouchableOpacity
         style={[styles.btnNext, { marginTop: 20 }]}
         onPress={exportToPdf}
@@ -591,6 +602,69 @@ export default function LaundryFormScreen() {
       >
         <Text style={styles.btnTxt}>Simpan Pesanan</Text>
       </TouchableOpacity>
+
+      {/* Modal diskon */}
+      <Modal
+        visible={isDiscountModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setDiscountModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Tambah Diskon</Text>
+            <View style={styles.radioRow}>
+              <TouchableOpacity
+                onPress={() => setDiscountType("nominal")}
+                style={
+                  discountType === "nominal" ? styles.radioActive : styles.radio
+                }
+              >
+                <Text>Diskon (Rp)</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setDiscountType("percent")}
+                style={
+                  discountType === "percent" ? styles.radioActive : styles.radio
+                }
+              >
+                <Text>Diskon (%)</Text>
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              style={styles.input}
+              keyboardType="decimal-pad"
+              value={discountInput}
+              onChangeText={setDiscountInput}
+              placeholder={
+                discountType === "nominal"
+                  ? "Masukkan jumlah Rp"
+                  : "Masukkan persen"
+              }
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity onPress={() => setDiscountModalVisible(false)}>
+                <Text style={{ color: "red", fontWeight: "bold" }}>Batal</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  const val = parseFloat(discountInput) || 0;
+                  const amt =
+                    discountType === "nominal"
+                      ? val
+                      : Math.round((totalHarga * val) / 100);
+                  setDiscountAmount(amt);
+                  setDiscountModalVisible(false);
+                }}
+              >
+                <Text style={{ color: "green", fontWeight: "bold" }}>
+                  Konfirmasi
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 
@@ -719,5 +793,66 @@ const styles = StyleSheet.create({
     padding: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#eee",
+  },
+
+  /*__________ style baru untuk diskon/modal __________*/
+  cardBlue: {
+    backgroundColor: "#007AFF",
+    borderRadius: 12,
+    padding: 16,
+    marginVertical: 16,
+  },
+  btnDiscount: {
+    marginTop: 12,
+    backgroundColor: "#28A745",
+    padding: 10,
+    borderRadius: 8,
+    alignSelf: "flex-end",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContent: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 20,
+    width: "80%",
+  },
+  modalTitle: { 
+    fontSize: 18, 
+    fontWeight: "bold", 
+    textAlign: "center" 
+  },
+  radioRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginVertical: 12,
+  },
+  radio: {
+    flex: 1,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 8,
+    marginHorizontal: 4,
+    alignItems: "center",
+  },
+  radioActive: {
+    flex: 1,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#007AFF",
+    backgroundColor: "#EAF4FF",
+    borderRadius: 8,
+    marginHorizontal: 4,
+    alignItems: "center",
+  },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 16,
   },
 });
