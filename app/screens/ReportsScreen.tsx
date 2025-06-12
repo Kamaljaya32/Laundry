@@ -22,6 +22,7 @@ import {
   Timestamp,
 } from "firebase/firestore";
 import { db, auth } from "../../config/private-config/config/firebaseConfig";
+import { exportPDFReport } from "../utils/pdfReport";
 
 interface OrderDoc {
   total: number | string;
@@ -220,6 +221,24 @@ export default function ReportsScreen() {
           </ScrollView>
         </View>
 
+        <TouchableOpacity
+          style={[
+            styles.actionBtn,
+            { backgroundColor: "#007AFF", marginTop: 10, marginBottom: 10 },
+          ]}
+          onPress={() => {
+            exportPDFReport({
+              year: selectedYear,
+              month: selectedMonth,
+              orders,
+              expenses,
+            });
+          }}
+        >
+          <Ionicons name="download" size={20} color="#fff" />
+          <Text style={styles.btnText}>Ekspor PDF</Text>
+        </TouchableOpacity>
+
         <View style={styles.rowWrap}>
           <NumberBox
             label="Pemasukan"
@@ -246,7 +265,7 @@ export default function ReportsScreen() {
               { color: filtered.profit >= 0 ? "#4CAF50" : "#F44336" },
             ]}
           >
-            Rp {filtered.profit.toLocaleString("id-ID")}
+            Rp. {filtered.profit.toLocaleString("id-ID")}
           </Text>
           <Ionicons
             name="add-circle"
@@ -311,7 +330,7 @@ export default function ReportsScreen() {
                 : "Tambah Pemasukan"}
             </Text>
             <TextInput
-              placeholder="Nominal (Rp)"
+              placeholder="Nominal (Rp.)"
               keyboardType={Platform.select({
                 ios: "number-pad",
                 android: "decimal-pad",
@@ -361,10 +380,7 @@ function NumberBox({
     <View style={styles.numberBox}>
       <Text style={styles.numberLabel}>{label}</Text>
       <Text style={[styles.numberValue, { color }]}>
-        Rp{" "}
-        {value >= 1_000_000
-          ? (value / 1_000_000).toFixed(1) + "Jt"
-          : value.toLocaleString("id-ID")}
+        Rp. {value.toLocaleString("id-ID")}
       </Text>
     </View>
   );
@@ -458,5 +474,10 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: "center",
+  },
+  exportBtnWrapper: {
+    flexDirection: "row",
+    justifyContent: "center",
+    marginBottom: 16,
   },
 });
