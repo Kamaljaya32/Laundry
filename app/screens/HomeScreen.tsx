@@ -68,7 +68,16 @@ export default function HomeScreen() {
   );
   const [search, setSearch] = useState("");
 
-  /* realtime listener */
+  /* --- FIXED STATE for income/expense/balance --- */
+  const [income, setIncome] = useState(0);
+  const [expense, setExpense] = useState(0);
+  const [balance, setBalance] = useState(0);
+  const [dateToday, setDateToday] = useState(
+    moment().format("dddd, DD MMMM YYYY")
+  );
+  const [financeLoading, setFinanceLoading] = useState(true);
+
+  /* realtime listener laundry */
   useEffect(() => {
     if (!user) return;
     const q = query(
@@ -96,6 +105,80 @@ export default function HomeScreen() {
     const id = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(id);
   }, []);
+
+  /* --- REPLACE useEffect finance di HomeScreen --- */
+  useEffect(() => {
+    if (!user) return;
+
+    setFinanceLoading(true);
+    const start = moment().startOf("day").toDate();
+    const end = moment().add(1, "day").startOf("day").toDate(); // eksklusif
+
+    // ───── pemasukan (= orders yg sudah dibayar) ─────
+    const PAID = ["cash", "qris", "transfer"];
+
+    const qIncome = query(
+      collection(db, "orders"),
+      where("ownerId", "==", user.uid),
+      where("payment", "in", PAID), // equality-type filter
+      where("createdAt", ">=", Timestamp.fromDate(start)),
+      where("createdAt", "<", Timestamp.fromDate(end))
+    );
+
+    // ───── pengeluaran ─────
+    const qExpense = query(
+      collection(db, "expenses"),
+      where("ownerId", "==", user.uid),
+      where("date", ">=", Timestamp.fromDate(start)),
+      where("date", "<", Timestamp.fromDate(end))
+    );
+
+    let doneIncome = false;
+    let doneExpense = false;
+    const finish = () => {
+      if (doneIncome && doneExpense) setFinanceLoading(false);
+    };
+
+    const unsubIncome = onSnapshot(qIncome, (snap) => {
+      const total = snap.docs.reduce((sum, d) => {
+        const data = d.data();
+        return data.payment === "unpaid" ? sum : sum + (+data.total || 0);
+      }, 0);
+      setIncome(total);
+      doneIncome = true;
+      finish();
+    });
+
+    const unsubExpense = onSnapshot(
+      qExpense,
+      (snap) => {
+        const total = snap.docs.reduce(
+          (s, d) => s + (+d.data().amount || 0),
+          0
+        );
+        setExpense(total);
+        doneExpense = true;
+        finish();
+      },
+      (err) => {
+        console.error(err);
+        doneExpense = true;
+        finish();
+      }
+    );
+
+    return () => {
+      unsubIncome();
+      unsubExpense();
+    };
+  }, [user]);
+  
+  /* update balance when income or expense berubah */
+  useEffect(() => {
+    const newBalance = income - expense;
+    console.log("Updating balance:", { income, expense, balance: newBalance });
+    setBalance(newBalance);
+  }, [income, expense]);
 
   /* ───────── helpers ───────── */
   const actionSheet = (opts: string[], onPick: (idx: number) => void) => {
@@ -280,6 +363,48 @@ export default function HomeScreen() {
       <Text style={styles.header}>Hai, {user?.displayName || "User"} 👋</Text>
       <Text style={styles.subHeader}>List Laundry Hari Ini</Text>
 
+      {/* --- UPDATED: Saldo dan pemasukan/pengeluaran hari ini --- */}
+      <View style={styles.balanceContainer}>
+        <Text style={styles.balanceDate}>{dateToday}</Text>
+
+        {financeLoading ? (
+          <View style={styles.balanceRow}>
+            <ActivityIndicator size="small" color="#007AFF" />
+            <Text style={{ marginLeft: 8, color: "#666" }}>
+              Memuat data keuangan...
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.balanceRow}>
+            <View style={styles.balanceBox}>
+              <Text style={styles.balanceTitle}>Total Saldo</Text>
+              <Text
+                style={[
+                  styles.balanceValue,
+                  { color: balance >= 0 ? "#28A745" : "#FF3B30" },
+                ]}
+              >
+                Rp {balance.toLocaleString("id-ID")}
+              </Text>
+            </View>
+
+            <View style={styles.balanceBox}>
+              <Text style={styles.balanceTitle}>Pemasukan</Text>
+              <Text style={styles.incomeValue}>
+                Rp {income.toLocaleString("id-ID")}
+              </Text>
+            </View>
+
+            <View style={styles.balanceBox}>
+              <Text style={styles.balanceTitle}>Pengeluaran</Text>
+              <Text style={styles.expenseValue}>
+                Rp {expense.toLocaleString("id-ID")}
+              </Text>
+            </View>
+          </View>
+        )}
+      </View>
+
       {/* search & filter */}
       <View style={styles.toolsRow}>
         <TextInput
@@ -320,6 +445,36 @@ const styles = StyleSheet.create({
     zIndex: 30,
     elevation: 4,
   },
+
+  balanceContainer: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    borderColor: "#D6EBFF",
+    borderWidth: 1,
+  },
+  balanceDate: {
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 8,
+    color: "#666",
+  },
+  balanceRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  balanceBox: { flex: 1, alignItems: "center" },
+  balanceTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 4,
+    color: "#333",
+  },
+  balanceValue: { fontSize: 18, fontWeight: "bold" },
+  incomeValue: { fontSize: 18, fontWeight: "bold", color: "#28A745" },
+  expenseValue: { fontSize: 18, fontWeight: "bold", color: "#FF3B30" },
 
   toolsRow: { flexDirection: "row", marginBottom: 12 },
   search: {

@@ -436,7 +436,7 @@ export default function LaundryFormScreen() {
     </KeyboardAwareScrollView>
   );
 
-  /* ---------- STEP 1 (pembayaran) ---------- */
+  /* ---------- STEP 1 (pembayaran) ---------- */
   const renderPaymentStep = () => (
     <View style={{ flex: 1, padding: 16 }}>
       <TouchableOpacity
@@ -452,7 +452,7 @@ export default function LaundryFormScreen() {
         <Text style={{ fontWeight: "bold", marginBottom: 8 }}>
           Detail Pelanggan
         </Text>
-        <Text>Nama  : {selectedCust?.name}</Text>
+        <Text>Nama  : {selectedCust?.name}</Text>
         <Text>No WA : {selectedCust?.phone}</Text>
         <Text>Total : Rp {totalHarga.toLocaleString("id-ID")}</Text>
       </View>
@@ -491,7 +491,7 @@ export default function LaundryFormScreen() {
                 ? "QRIS"
                 : m === "transfer"
                 ? "Transfer"
-                : "Belum Bayar"}
+                : "Belum Bayar"}
             </Text>
           </TouchableOpacity>
         ))}
@@ -821,7 +821,11 @@ const styles = StyleSheet.create({
     padding: 20,
     width: "80%",
   },
-  modalTitle: { fontSize: 18, fontWeight: "bold", textAlign: "center" },
+  modalTitle: { 
+    fontSize: 18, 
+    fontWeight: "bold", 
+    textAlign: "center" 
+  },
   radioRow: {
     flexDirection: "row",
     justifyContent: "space-around",
