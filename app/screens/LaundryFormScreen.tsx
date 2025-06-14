@@ -1,3 +1,4 @@
+/* eslint-disable react-native/no-inline-styles */
 import React, { useState, useEffect, useRef } from "react";
 import {
   View,
@@ -26,7 +27,6 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 
-/* ---------- types ---------- */
 type Step = 0 | 1 | 2;
 type PayMethod = "cash" | "qris" | "transfer" | "unpaid";
 
@@ -42,19 +42,15 @@ interface CustomerInfo {
   phone: string;
 }
 
-/* ---------- komponen ---------- */
 export default function LaundryFormScreen() {
-  /* step & order */
   const [step, setStep] = useState<Step>(0);
   const [orderId, setOrderId] = useState<number | null>(null);
 
-  /* pelanggan */
   const [phoneText, setPhoneText] = useState("");
   const [customers, setCustomers] = useState<CustomerInfo[]>([]);
   const [selectedCust, setSelectedCust] = useState<CustomerInfo | null>(null);
   const phoneInputRef = useRef<TextInput>(null);
 
-  /* tanggal */
   const [inDate, setInDate] = useState<Date | null>(null);
   const [outDate, setOutDate] = useState<Date | null>(null);
   const [datePicker, setDatePicker] = useState({
@@ -62,17 +58,14 @@ export default function LaundryFormScreen() {
     which: "in" as "in" | "out",
   });
 
-  /* layanan */
   const [items, setItems] = useState<LaundryItem[]>([
     { service: "", weight: "", price: "", note: "" },
   ]);
   const [serviceOptions, setServiceOptions] = useState<string[]>([]);
   const [openSvcIdx, setOpenSvcIdx] = useState<number | null>(null);
 
-  /* pembayaran */
-  const [pay, setPay] = useState<PayMethod>("unpaid"); // ▶️ default belum‑bayar
+  const [pay, setPay] = useState<PayMethod>("unpaid");
 
-  /* discount */
   const [discountType, setDiscountType] = useState<"nominal" | "percent">(
     "nominal"
   );
@@ -80,44 +73,45 @@ export default function LaundryFormScreen() {
   const [discountAmount, setDiscountAmount] = useState<number>(0);
   const [isDiscountModalVisible, setDiscountModalVisible] = useState(false);
 
-  /* ---------- realtime pelanggan ---------- */
+  // Load customers
   useEffect(() => {
     const u = auth.currentUser;
     if (!u) return;
-    const unsub = onSnapshot(
+    return onSnapshot(
       query(collection(db, "customers"), where("ownerId", "==", u.uid)),
-      (s) =>
+      (snap) =>
         setCustomers(
-          s.docs.map((d) => ({ id: d.id, ...d.data() } as CustomerInfo))
+          snap.docs.map((d) => ({ id: d.id, ...d.data() } as CustomerInfo))
         )
     );
-    return unsub;
   }, []);
 
-  /* ---------- list layanan master ---------- */
+  // Load service options
   useEffect(() => {
     const col = collection(db, "list_laundry");
-    const unsub = onSnapshot(col, (s) => {
+    return onSnapshot(col, (snap) =>
       setServiceOptions(
-        s.docs.flatMap((d) => {
+        snap.docs.flatMap((d) => {
           const data = d.data() as any;
           if (Array.isArray(data.list)) return data.list;
           if (typeof data.list === "string") return [data.list];
           if (typeof data.name === "string") return [data.name];
           return [];
         })
-      );
-    });
-    return unsub;
+      )
+    );
   }, []);
+
+  // Generate orderId when entering review step
+  useEffect(() => {
+    if (step === 2 && !orderId) setOrderId(Date.now());
+  }, [step, orderId]);
 
   const filteredCust = customers.filter((c) =>
     c.phone.includes(phoneText.trim())
   );
-
-  /* ---------- helpers ---------- */
   const totalHarga = items.reduce(
-    (s, i) => s + parseFloat(i.price || "0") * parseFloat(i.weight || "0"),
+    (sum, it) => sum + parseFloat(it.price || "0") * parseFloat(it.weight || "0"),
     0
   );
   const totalAfterDiscount = Math.max(0, totalHarga - discountAmount);
@@ -125,32 +119,24 @@ export default function LaundryFormScreen() {
   const addService = () =>
     setItems([...items, { service: "", weight: "", price: "", note: "" }]);
   const updateItem = (idx: number, key: keyof LaundryItem, val: string) => {
-    const arr = [...items];
-    arr[idx][key] = val;
-    setItems(arr);
+    const a = [...items];
+    a[idx][key] = val;
+    setItems(a);
   };
 
-  /* tanggal */
-  const openPicker = (w: "in" | "out") =>
-    setDatePicker({ open: true, which: w });
+  const openPicker = (which: "in" | "out") =>
+    setDatePicker({ open: true, which });
   const closePicker = () => setDatePicker((p) => ({ ...p, open: false }));
   const onConfirmDate = (d: Date) => {
     datePicker.which === "in" ? setInDate(d) : setOutDate(d);
     closePicker();
   };
 
-  /* generate orderNo */
-  useEffect(() => {
-    if (step === 2 && !orderId) setOrderId(Date.now());
-  }, [step, orderId]);
-
-  /* ---------- simpan ---------- */
   const saveOrder = async () => {
     if (!selectedCust) return alert("Pilih pelanggan terlebih dahulu!");
     if (!orderId) return alert("ID pesanan belum dibuat.");
-
     try {
-      /* a. tabel orders */
+      // Save to orders
       await setDoc(doc(db, "orders", orderId.toString()), {
         orderNumber: orderId,
         customerId: selectedCust.id,
@@ -165,8 +151,7 @@ export default function LaundryFormScreen() {
         ownerId: auth.currentUser?.uid,
         createdAt: serverTimestamp(),
       });
-
-      /* b. tabel laundry (dashboard) */
+      // Save to laundry (dashboard)
       await setDoc(doc(db, "laundry", orderId.toString()), {
         orderNumber: orderId,
         name: selectedCust.name,
@@ -179,14 +164,12 @@ export default function LaundryFormScreen() {
         ownerId: auth.currentUser?.uid,
         createdAt: serverTimestamp(),
       });
-
-      /* c. update total order pelanggan */
+      // Increment customer totalOrders
       await updateDoc(doc(db, "customers", selectedCust.id), {
         totalOrders: increment(1),
       });
-
       alert("Pesanan tersimpan.");
-      /* reset */
+      // Reset form
       setStep(0);
       setOrderId(null);
       setSelectedCust(null);
@@ -202,43 +185,53 @@ export default function LaundryFormScreen() {
     }
   };
 
-  /* ---------- export PDF ---------- */
-  /* export PDF */
   const exportToPdf = async () => {
     const rows = items
       .map(
-        (it) => `<tr><td>${it.service}</td><td style=\"text-align:center;\">${
-          it.weight
-        }</td>
-      <td style=\"text-align:right;\">Rp${(+it.price || 0).toLocaleString(
-        "id-ID"
-      )}</td>
-      <td style=\"text-align:right;\">Rp${(
-        (+it.price || 0) * (+it.weight || 0)
-      ).toLocaleString("id-ID")}</td></tr>`
+        (it) => `<tr>
+          <td>${it.service}</td>
+          <td style="text-align:center;">${it.weight}</td>
+          <td style="text-align:right;">Rp${(+it.price).toLocaleString(
+            "id-ID"
+          )}</td>
+          <td style="text-align:right;">Rp${(
+            +it.price * +it.weight
+          ).toLocaleString("id-ID")}</td>
+        </tr>`
       )
       .join("");
-
     const html = `
-      <html><head><meta charset=\"utf-8\"/>
-      <style>body{font-family:Arial; margin:24px;} table{width:100%;border-collapse:collapse;font-size:12px;}
-      th,td{border:1px solid #ccc;padding:6px}</style></head><body>
+      <html><head><meta charset="utf-8"/>
+      <style>
+        body{font-family:Arial;margin:24px;}
+        table{width:100%;border-collapse:collapse;font-size:12px;}
+        th,td{border:1px solid #ccc;padding:6px}
+      </style>
+      </head><body>
       <h2>Laundry Order #${orderId}</h2>
       <p><b>Nama:</b> ${selectedCust?.name}<br/><b>No. WA:</b> ${
       selectedCust?.phone
     }</p>
-      <table><thead><tr><th>Layanan</th><th>Qty</th><th>Harga</th><th>Subtotal</th></tr></thead>
-      <tbody>${rows}</tbody>
-      <tfoot>
-        <tr><td colspan=\"3\" style=\"text-align:right;\">Diskon</td>
-            <td style=\"text-align:right;\">- Rp${discountAmount.toLocaleString(
+      <table>
+        <thead>
+          <tr><th>Layanan</th><th>Qty</th><th>Harga</th><th>Subtotal</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+        <tfoot>
+          <tr>
+            <td colspan="3" style="text-align:right;">Diskon</td>
+            <td style="text-align:right;">- Rp${discountAmount.toLocaleString(
               "id-ID"
-            )}</td></tr>
-        <tr><td colspan=\"3\" style=\"text-align:right;font-weight:bold\">TOTAL</td>
-            <td style=\"text-align:right;font-weight:bold\">Rp ${(
-              totalHarga - discountAmount
-            ).toLocaleString("id-ID")}</td></tr>
-      </tfoot></table>
+            )}</td>
+          </tr>
+          <tr>
+            <td colspan="3" style="text-align:right;font-weight:bold">TOTAL</td>
+            <td style="text-align:right;font-weight:bold">Rp ${(
+      totalHarga - discountAmount
+    ).toLocaleString("id-ID")}</td>
+          </tr>
+        </tfoot>
+      </table>
       <p><b>Pembayaran:</b> ${
         pay === "cash"
           ? "Cash"
@@ -249,19 +242,21 @@ export default function LaundryFormScreen() {
           : "Belum Bayar"
       }</p>
       </body></html>`;
-
     const { uri } = await Print.printToFileAsync({ html });
-    await Sharing.shareAsync(uri, { UTI: ".pdf", mimeType: "application/pdf" });
+    await Sharing.shareAsync(uri, {
+      UTI: ".pdf",
+      mimeType: "application/pdf",
+    });
   };
 
-  /* ───────────── step 0: laundry ───────────── */
+  /* ─── RENDER STEP 0 ─── */
   const renderLaundryStep = () => (
     <KeyboardAwareScrollView
       contentContainerStyle={{ padding: 16, paddingBottom: 140 }}
       enableOnAndroid
       keyboardShouldPersistTaps="handled"
     >
-      {/* nomor telepon + autocomplete */}
+      {/* Phone + Autocomplete */}
       <View style={styles.autoWrap}>
         <TextInput
           ref={phoneInputRef}
@@ -276,12 +271,8 @@ export default function LaundryFormScreen() {
           blurOnSubmit={false}
           returnKeyType="done"
         />
-
-        {phoneText.length > 0 && !selectedCust && (
-          <ScrollView
-            style={styles.autoList}
-            keyboardShouldPersistTaps="handled"
-          >
+        {!selectedCust && phoneText.length > 0 && (
+          <ScrollView style={styles.autoList}>
             {filteredCust.map((c) => (
               <TouchableOpacity
                 key={c.id}
@@ -299,15 +290,13 @@ export default function LaundryFormScreen() {
         )}
       </View>
 
-      {/* nama readonly */}
       <TextInput
         placeholder="Nama Pelanggan"
         style={styles.input}
-        value={selectedCust ? selectedCust.name : ""}
+        value={selectedCust?.name || ""}
         editable={false}
       />
 
-      {/* tanggal */}
       <View style={styles.row}>
         <TouchableOpacity
           style={[styles.input, { flex: 1, marginRight: 6 }]}
@@ -327,18 +316,12 @@ export default function LaundryFormScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* layanan list */}
       {items.map((it, i) => (
         <View
           key={i}
-          style={[
-            styles.card,
-            { marginBottom: 16, backgroundColor: "#EAF4FF" },
-          ]}
+          style={[styles.card, { marginBottom: 16, backgroundColor: "#EAF4FF" }]}
         >
           <Text style={styles.cardTitle}>Layanan #{i + 1}</Text>
-
-          {/* input + autocomplete layanan */}
           <View style={styles.autoWrap}>
             <TextInput
               style={styles.input}
@@ -351,12 +334,8 @@ export default function LaundryFormScreen() {
               onFocus={() => setOpenSvcIdx(i)}
               onBlur={() => setTimeout(() => setOpenSvcIdx(null), 150)}
             />
-
             {openSvcIdx === i && it.service.length > 0 && (
-              <ScrollView
-                style={styles.autoList}
-                keyboardShouldPersistTaps="handled"
-              >
+              <ScrollView style={styles.autoList}>
                 {serviceOptions
                   .filter((opt) =>
                     opt.toLowerCase().includes(it.service.toLowerCase())
@@ -376,7 +355,6 @@ export default function LaundryFormScreen() {
             )}
           </View>
 
-          {/* kuantitas / harga */}
           <View style={styles.row}>
             <TextInput
               placeholder="Jumlah (Kg/Pcs)"
@@ -436,9 +414,9 @@ export default function LaundryFormScreen() {
     </KeyboardAwareScrollView>
   );
 
-  /* ---------- STEP 1 (pembayaran) ---------- */
+  /* ─── RENDER STEP 1 ─── */
   const renderPaymentStep = () => (
-    <View style={{ flex: 1, padding: 16 }}>
+    <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 140 }}>
       <TouchableOpacity
         onPress={() => setStep(0)}
         style={{ flexDirection: "row", alignItems: "center", marginBottom: 16 }}
@@ -447,7 +425,6 @@ export default function LaundryFormScreen() {
         <Text style={{ color: "#007AFF", marginLeft: 4 }}>Kembali</Text>
       </TouchableOpacity>
 
-      {/* detail pelanggan */}
       <View style={styles.card}>
         <Text style={{ fontWeight: "bold", marginBottom: 8 }}>
           Detail Pelanggan
@@ -457,7 +434,6 @@ export default function LaundryFormScreen() {
         <Text>Total : Rp {totalHarga.toLocaleString("id-ID")}</Text>
       </View>
 
-      {/* opsi bayar */}
       <View style={[styles.card, { marginTop: 16 }]}>
         <Text style={{ fontWeight: "bold", marginBottom: 12 }}>
           Metode Pembayaran
@@ -503,12 +479,20 @@ export default function LaundryFormScreen() {
       >
         <Text style={styles.btnTxt}>Lanjut Review Pesanan</Text>
       </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
 
-  /* ───────────── step 2: review ───────────── */
+  /* ─── RENDER STEP 2 ─── */
   const renderReviewStep = () => (
-    <ScrollView style={{ padding: 16 }}>
+    <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 140 }}>
+      <TouchableOpacity
+        onPress={() => setStep(1)}
+        style={{ flexDirection: "row", alignItems: "center", marginBottom: 16 }}
+      >
+        <Ionicons name="arrow-back" size={20} color="#007AFF" />
+        <Text style={{ color: "#007AFF", marginLeft: 4 }}>Kembali</Text>
+      </TouchableOpacity>
+
       <Text style={{ fontSize: 18, fontWeight: "bold", marginBottom: 16 }}>
         Review Pesanan
       </Text>
@@ -560,22 +544,15 @@ export default function LaundryFormScreen() {
         </Text>
       </View>
 
-      {/* Tagihan & Diskon */}
       <View style={styles.cardBlue}>
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <Text style={{ fontWeight: "bold", color: "#fff" }}>Sisa Bayar</Text>
-          <Text style={{ fontWeight: "bold", color: "#fff" }}>
+        <View style={styles.detailRow}>
+          <Text style={styles.detailLabel}>Sisa Bayar</Text>
+          <Text style={styles.detailValue}>
             Rp {totalAfterDiscount.toLocaleString("id-ID")}
           </Text>
         </View>
         {discountAmount > 0 && (
-          <Text style={{ color: "#ffdddd", marginTop: 4 }}>
+          <Text style={{ color: "#ffdddd" }}>
             Diskon: -Rp {discountAmount.toLocaleString("id-ID")}
           </Text>
         )}
@@ -603,7 +580,6 @@ export default function LaundryFormScreen() {
         <Text style={styles.btnTxt}>Simpan Pesanan</Text>
       </TouchableOpacity>
 
-      {/* Modal diskon */}
       <Modal
         visible={isDiscountModalVisible}
         transparent
@@ -643,16 +619,18 @@ export default function LaundryFormScreen() {
               }
             />
             <View style={styles.modalActions}>
-              <TouchableOpacity onPress={() => setDiscountModalVisible(false)}>
+              <TouchableOpacity
+                onPress={() => setDiscountModalVisible(false)}
+              >
                 <Text style={{ color: "red", fontWeight: "bold" }}>Batal</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {
-                  const val = parseFloat(discountInput) || 0;
+                  const v = parseFloat(discountInput) || 0;
                   const amt =
                     discountType === "nominal"
-                      ? val
-                      : Math.round((totalHarga * val) / 100);
+                      ? v
+                      : Math.round((totalHarga * v) / 100);
                   setDiscountAmount(amt);
                   setDiscountModalVisible(false);
                 }}
@@ -668,7 +646,6 @@ export default function LaundryFormScreen() {
     </ScrollView>
   );
 
-  /* ───────────── render utama ───────────── */
   return (
     <View style={{ flex: 1, backgroundColor: "#F6FCFF" }}>
       <View style={styles.stepRow}>
@@ -689,6 +666,7 @@ export default function LaundryFormScreen() {
       {step === 0 && renderLaundryStep()}
       {step === 1 && renderPaymentStep()}
       {step === 2 && renderReviewStep()}
+
       <DateTimePickerModal
         isVisible={datePicker.open}
         mode="date"
@@ -699,7 +677,6 @@ export default function LaundryFormScreen() {
   );
 }
 
-/* ─────────────── styles ─────────────── */
 const styles = StyleSheet.create({
   stepRow: {
     flexDirection: "row",
@@ -749,6 +726,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   btnTxt: { color: "#fff", fontWeight: "600", fontSize: 16 },
+
   totalContainer: {
     backgroundColor: "#fff",
     padding: 16,
@@ -757,13 +735,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
   },
-  detailRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 6,
-  },
-  detailLabel: { color: "#555" },
-  detailValue: { fontWeight: "bold", color: "#000" },
+
   paymentOption: {
     flexDirection: "row",
     alignItems: "center",
@@ -773,10 +745,12 @@ const styles = StyleSheet.create({
     borderColor: "#ccc",
     marginBottom: 10,
   },
-  paymentOptionSelected: { borderColor: "#007AFF", backgroundColor: "#EAF4FF" },
+  paymentOptionSelected: {
+    borderColor: "#007AFF",
+    backgroundColor: "#EAF4FF",
+  },
   paymentText: { marginLeft: 10, fontSize: 16 },
 
-  /* autocomplete */
   autoWrap: { position: "relative", marginBottom: 12 },
   autoList: {
     position: "absolute",
@@ -795,7 +769,6 @@ const styles = StyleSheet.create({
     borderBottomColor: "#eee",
   },
 
-  /*__________ style baru untuk diskon/modal __________*/
   cardBlue: {
     backgroundColor: "#007AFF",
     borderRadius: 12,
@@ -809,6 +782,14 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignSelf: "flex-end",
   },
+  detailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
+  detailLabel: { color: "#fff", fontWeight: "bold" },
+  detailValue: { color: "#fff", fontWeight: "bold" },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
@@ -821,10 +802,10 @@ const styles = StyleSheet.create({
     padding: 20,
     width: "80%",
   },
-  modalTitle: { 
-    fontSize: 18, 
-    fontWeight: "bold", 
-    textAlign: "center" 
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    textAlign: "center",
   },
   radioRow: {
     flexDirection: "row",
