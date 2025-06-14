@@ -1,9 +1,9 @@
 {
   "expo": {
-    "name": "Laundry",
+    "name": "OMNIDRY",
     "slug": "Laundry",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/prjct.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",

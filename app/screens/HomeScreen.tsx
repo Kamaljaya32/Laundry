@@ -11,6 +11,9 @@ import {
   ActionSheetIOS,
   Alert,
   TextInput,
+  useWindowDimensions,
+  Modal,
+  Pressable,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {
@@ -23,11 +26,12 @@ import {
   doc,
   deleteDoc,
 } from "firebase/firestore";
-import { db, auth } from "../../config/private-config/config/firebaseConfig";
 import moment from "moment";
 import { useRouter } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-/* ───────── types ───────── */
+import { db, auth } from "../../config/private-config/config/firebaseConfig";
+
 type Status = "Sedang Diproses" | "Belum Diambil" | "Telah Diambil";
 type Payment = "cash" | "qris" | "transfer" | "unpaid";
 
@@ -43,7 +47,6 @@ interface LaundryDoc {
   ownerId: string;
 }
 
-/* ───────── meta visual ───────── */
 const STATUS_META: Record<Status, readonly [string, string, string]> = {
   "Sedang Diproses": ["#E1F0FF", "#007AFF", "🌀"],
   "Belum Diambil": ["#FFF3CD", "#FFA500", "📦"],
@@ -55,319 +58,69 @@ const STATUS_ORDER: Record<Status, number> = {
   "Telah Diambil": 2,
 };
 
-/* ───────── component ───────── */
-export default function HomeScreen() {
-  const user = auth.currentUser;
-  const router = useRouter();
-
-  const [data, setData] = useState<LaundryDoc[]>([]);
-  const [loading, setLoad] = useState(true);
-  const [, setTick] = useState(0);
-  const [filter, setFilter] = useState<"Semua" | Status | "Belum Bayar">(
-    "Semua"
-  );
-  const [search, setSearch] = useState("");
-
-  /* --- FIXED STATE for income/expense/balance --- */
-  const [income, setIncome] = useState(0);
-  const [expense, setExpense] = useState(0);
-  const [balance, setBalance] = useState(0);
-  const [dateToday, setDateToday] = useState(
-    moment().format("dddd, DD MMMM YYYY")
-  );
-  const [financeLoading, setFinanceLoading] = useState(true);
-
-  /* realtime listener laundry */
-  useEffect(() => {
-    if (!user) return;
-    const q = query(
-      collection(db, "laundry"),
-      where("ownerId", "==", user.uid)
+// Cross-platform ActionSheet helper
+function showOptions(
+  title: string,
+  options: string[],
+  cancelButtonIndex: number,
+  callback: (index: number) => void
+) {
+  if (Platform.OS === "ios") {
+    ActionSheetIOS.showActionSheetWithOptions(
+      { title, options, cancelButtonIndex },
+      callback
     );
-    const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map(
-        (d) => ({ id: d.id, ...d.data() } as LaundryDoc)
-      );
-      list.sort(
-        (a, b) =>
-          STATUS_ORDER[a.status] - STATUS_ORDER[b.status] ||
-          (a.payment === "unpaid" ? 1 : 0) - (b.payment === "unpaid" ? 1 : 0) ||
-          a.orderNumber - b.orderNumber
-      );
-      setData(list);
-      setLoad(false);
-    });
-    return unsub;
-  }, [user]);
-
-  /* 1-second ticker to keep countdown updating */
-  useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  /* --- REPLACE useEffect finance di HomeScreen --- */
-  useEffect(() => {
-    if (!user) return;
-
-    setFinanceLoading(true);
-    const start = moment().startOf("day").toDate();
-    const end = moment().add(1, "day").startOf("day").toDate(); // eksklusif
-
-    // ───── pemasukan (= orders yg sudah dibayar) ─────
-    const PAID = ["cash", "qris", "transfer"];
-
-    const qIncome = query(
-      collection(db, "orders"),
-      where("ownerId", "==", user.uid),
-      where("payment", "in", PAID), // equality-type filter
-      where("createdAt", ">=", Timestamp.fromDate(start)),
-      where("createdAt", "<", Timestamp.fromDate(end))
+  } else {
+    // Android fallback
+    Alert.alert(
+      title,
+      undefined,
+      options.map((opt, i) => ({
+        text: opt,
+        onPress: () => callback(i),
+        style: i === cancelButtonIndex ? "cancel" : undefined,
+      }))
     );
+  }
+}
 
-    // ───── pengeluaran ─────
-    const qExpense = query(
-      collection(db, "expenses"),
-      where("ownerId", "==", user.uid),
-      where("date", ">=", Timestamp.fromDate(start)),
-      where("date", "<", Timestamp.fromDate(end))
-    );
-
-    let doneIncome = false;
-    let doneExpense = false;
-    const finish = () => {
-      if (doneIncome && doneExpense) setFinanceLoading(false);
-    };
-
-    const unsubIncome = onSnapshot(qIncome, (snap) => {
-      const total = snap.docs.reduce((sum, d) => {
-        const data = d.data();
-        return data.payment === "unpaid" ? sum : sum + (+data.total || 0);
-      }, 0);
-      setIncome(total);
-      doneIncome = true;
-      finish();
-    });
-
-    const unsubExpense = onSnapshot(
-      qExpense,
-      (snap) => {
-        const total = snap.docs.reduce(
-          (s, d) => s + (+d.data().amount || 0),
-          0
-        );
-        setExpense(total);
-        doneExpense = true;
-        finish();
-      },
-      (err) => {
-        console.error(err);
-        doneExpense = true;
-        finish();
-      }
-    );
-
-    return () => {
-      unsubIncome();
-      unsubExpense();
-    };
-  }, [user]);
-  
-  /* update balance when income or expense berubah */
-  useEffect(() => {
-    const newBalance = income - expense;
-    console.log("Updating balance:", { income, expense, balance: newBalance });
-    setBalance(newBalance);
-  }, [income, expense]);
-
-  /* ───────── helpers ───────── */
-  const actionSheet = (opts: string[], onPick: (idx: number) => void) => {
-    const cancel = opts.length - 1;
-    if (Platform.OS === "ios") {
-      ActionSheetIOS.showActionSheetWithOptions(
-        { options: opts, cancelButtonIndex: cancel },
-        onPick
-      );
-    } else {
-      Alert.alert(
-        "",
-        "",
-        opts
-          .slice(0, -1)
-          .map((o, i) => ({ text: o, onPress: () => onPick(i) })),
-        {
-          cancelable: true,
-        }
-      );
-    }
-  };
-
-  /* change status */
-  const changeStatus = (docId: string, current: Status) => {
-    const all: Status[] = ["Sedang Diproses", "Belum Diambil", "Telah Diambil"];
-    const opts = [...all, "Batal"];
-    actionSheet(opts, async (idx) => {
-      if (idx >= all.length) return;
-      const newStat = all[idx];
-      if (newStat === current) return;
-      try {
-        await updateDoc(doc(db, "orders", docId), { status: newStat });
-        if (newStat === "Telah Diambil") {
-          await deleteDoc(doc(db, "laundry", docId));
-        } else {
-          await updateDoc(doc(db, "laundry", docId), { status: newStat });
-        }
-      } catch (err) {
-        Alert.alert("Gagal", String(err));
-      }
-    });
-  };
-
-  /* mark as paid */
-  const markPaid = async (docId: string) => {
-    try {
-      await updateDoc(doc(db, "laundry", docId), { payment: "cash" });
-      await updateDoc(doc(db, "orders", docId), { payment: "cash" });
-    } catch (e) {
-      Alert.alert("Gagal", String(e));
-    }
-  };
-
-  /* open filter menu */
-  const openFilter = () => {
-    const opts: ("Semua" | Status | "Belum Bayar")[] = [
-      "Semua",
-      "Sedang Diproses",
-      "Belum Diambil",
-      "Belum Bayar",
-      "Telah Diambil",
-    ];
-    const iosOpts = [...opts, "Batal"];
-    const cancel = iosOpts.length - 1;
-    const pick = (idx: number) => {
-      if (idx >= opts.length) return;
-      setFilter(opts[idx]);
-    };
-    if (Platform.OS === "ios") {
-      ActionSheetIOS.showActionSheetWithOptions(
-        { options: iosOpts, cancelButtonIndex: cancel },
-        pick
-      );
-    } else {
-      Alert.alert(
-        "Filter",
-        "",
-        opts.map((o, i) => ({ text: o, onPress: () => pick(i) })),
-        {
-          cancelable: true,
-        }
-      );
-    }
-  };
-
-  /* filter data */
-  const shown = data.filter((d) => {
-    const statusOK =
-      filter === "Semua"
-        ? true
-        : filter === "Belum Bayar"
-        ? d.payment === "unpaid"
-        : d.status === filter;
-    const q = search.trim().toLowerCase();
-    const termOK =
-      q === "" ||
-      d.name.toLowerCase().includes(q) ||
-      String(d.orderNumber).includes(q);
-    return statusOK && termOK;
-  });
-
-  /* card render */
-  const renderItem = ({ item }: { item: LaundryDoc }) => {
-    const [bg, fg, ico] = STATUS_META[item.status];
-    let cd = "";
-    let late = false;
-    if (item.deadline) {
-      const diff = item.deadline.toDate().getTime() - Date.now();
-      late = diff < 0;
-      const dur = moment.duration(diff);
-      cd =
-        `${late ? "-" : ""}${Math.abs(dur.hours())
-          .toString()
-          .padStart(2, "0")}:` +
-        `${Math.abs(dur.minutes()).toString().padStart(2, "0")}:` +
-        `${Math.abs(dur.seconds()).toString().padStart(2, "0")}`;
-    }
-    return (
-      <View style={styles.card}>
-        {/* header */}
-        <View style={styles.cardHeader}>
-          <View>
-            <Text style={styles.name}>{item.name}</Text>
-            <Text style={styles.phone}>{item.phone}</Text>
-          </View>
-          <TouchableOpacity
-            onPress={() => changeStatus(item.id, item.status)}
-            style={[styles.statusChip, { backgroundColor: bg }]}
-          >
-            <Text style={{ color: fg, fontSize: 12, fontWeight: "600" }}>
-              {ico} {item.status}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <Text style={styles.detailTitle}>Detail Cucian :</Text>
-        {item.items.map((it, i) => (
-          <Text key={i} style={styles.itemText}>
-            • {it}
-          </Text>
-        ))}
-
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            marginTop: 6,
-          }}
-        >
-          {cd !== "" && (
-            <Text style={[styles.deadline, late ? styles.late : styles.onTime]}>
-              Sisa {cd}
-            </Text>
-          )}
-          {item.payment === "unpaid" && (
-            <TouchableOpacity onPress={() => markPaid(item.id)}>
-              <Text style={styles.unpaid}>Belum Bayar</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-    );
-  };
-
-  if (loading)
-    return (
-      <ActivityIndicator style={{ flex: 1 }} color="#007AFF" size="large" />
-    );
-
-  /* ───────── UI utama ───────── */
+interface TopSectionProps {
+  date: string;
+  balance: number;
+  income: number;
+  expense: number;
+  loading: boolean;
+  search: string;
+  onSearch: (t: string) => void;
+  onFilter: () => void;
+  onSettings: () => void;
+}
+function TopSection({
+  date,
+  balance,
+  income,
+  expense,
+  loading,
+  search,
+  onSearch,
+  onFilter,
+  onSettings,
+}: TopSectionProps) {
   return (
-    <View style={styles.container}>
-      {/* gear button */}
-      <TouchableOpacity
-        style={styles.settingsBtn}
-        onPress={() => router.push("/screens/setting/setting")}
-      >
-        <Ionicons name="settings-outline" size={20} color="#fff" />
-      </TouchableOpacity>
-
-      <Text style={styles.header}>Hai, {user?.displayName || "User"} 👋</Text>
+    <>
+      <View style={styles.headerRow}>
+        <Text style={styles.header}>
+          Hai, {auth.currentUser?.displayName || "User"} 👋
+        </Text>
+        <TouchableOpacity style={styles.settingsBtn} onPress={onSettings}>
+          <Ionicons name="settings-outline" size={20} color="#fff" />
+        </TouchableOpacity>
+      </View>
       <Text style={styles.subHeader}>List Laundry Hari Ini</Text>
 
-      {/* --- UPDATED: Saldo dan pemasukan/pengeluaran hari ini --- */}
       <View style={styles.balanceContainer}>
-        <Text style={styles.balanceDate}>{dateToday}</Text>
-
-        {financeLoading ? (
+        <Text style={styles.balanceDate}>{date}</Text>
+        {loading ? (
           <View style={styles.balanceRow}>
             <ActivityIndicator size="small" color="#007AFF" />
             <Text style={{ marginLeft: 8, color: "#666" }}>
@@ -387,14 +140,12 @@ export default function HomeScreen() {
                 Rp {balance.toLocaleString("id-ID")}
               </Text>
             </View>
-
             <View style={styles.balanceBox}>
               <Text style={styles.balanceTitle}>Pemasukan</Text>
               <Text style={styles.incomeValue}>
                 Rp {income.toLocaleString("id-ID")}
               </Text>
             </View>
-
             <View style={styles.balanceBox}>
               <Text style={styles.balanceTitle}>Pengeluaran</Text>
               <Text style={styles.expenseValue}>
@@ -405,45 +156,324 @@ export default function HomeScreen() {
         )}
       </View>
 
-      {/* search & filter */}
       <View style={styles.toolsRow}>
         <TextInput
           placeholder="Cari nama / nota"
           style={styles.search}
           value={search}
-          onChangeText={setSearch}
+          onChangeText={onSearch}
         />
-        <TouchableOpacity style={styles.filterBtn} onPress={openFilter}>
+        <TouchableOpacity style={styles.filterBtn} onPress={onFilter}>
           <Ionicons name="funnel" size={18} color="#007AFF" />
         </TouchableOpacity>
       </View>
+    </>
+  );
+}
 
+export default function HomeScreen() {
+  const router = useRouter();
+  const user = auth.currentUser;
+  const { height } = useWindowDimensions();
+
+  const [data, setData] = useState<LaundryDoc[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [, setTick] = useState(0);
+
+  const [filter, setFilter] = useState<"Semua" | Status | "Belum Bayar">(
+    "Semua"
+  );
+  const [search, setSearch] = useState("");
+
+  const [income, setIncome] = useState(0);
+  const [expense, setExpense] = useState(0);
+  const [balance, setBalance] = useState(0);
+  const [dateToday] = useState(moment().format("dddd, DD MMMM YYYY"));
+  const [financeLoading, setFinanceLoading] = useState(true);
+
+  const [payModalVisible, setPayModalVisible] = useState(false);
+  const [activeDocId, setActiveDocId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    const q = query(
+      collection(db, "laundry"),
+      where("ownerId", "==", user.uid)
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      const list = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() } as LaundryDoc))
+        .sort(
+          (a, b) =>
+            STATUS_ORDER[a.status] - STATUS_ORDER[b.status] ||
+            (a.payment === "unpaid" ? 1 : 0) -
+              (b.payment === "unpaid" ? 1 : 0) ||
+            a.orderNumber - b.orderNumber
+        );
+      setData(list);
+      setLoading(false);
+    });
+    return unsub;
+  }, [user]);
+
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    setFinanceLoading(true);
+    const start = moment().startOf("day").toDate();
+    const end = moment().add(1, "day").startOf("day").toDate();
+    const PAID = ["cash", "qris", "transfer"] as const;
+
+    const qInc = query(
+      collection(db, "orders"),
+      where("ownerId", "==", user.uid),
+      where("payment", "in", PAID),
+      where("createdAt", ">=", Timestamp.fromDate(start)),
+      where("createdAt", "<", Timestamp.fromDate(end))
+    );
+    const qExp = query(
+      collection(db, "expenses"),
+      where("ownerId", "==", user.uid),
+      where("date", ">=", Timestamp.fromDate(start)),
+      where("date", "<", Timestamp.fromDate(end))
+    );
+
+    let doneInc = false,
+      doneExp = false;
+    const finish = () => doneInc && doneExp && setFinanceLoading(false);
+
+    const unsubInc = onSnapshot(qInc, (snap) => {
+      setIncome(snap.docs.reduce((s, d) => s + (+d.data().total || 0), 0));
+      doneInc = true;
+      finish();
+    });
+    const unsubExp = onSnapshot(qExp, (snap) => {
+      setExpense(snap.docs.reduce((s, d) => s + (+d.data().amount || 0), 0));
+      doneExp = true;
+      finish();
+    });
+
+    return () => {
+      unsubInc();
+      unsubExp();
+    };
+  }, [user]);
+
+  useEffect(() => setBalance(income - expense), [income, expense]);
+
+  const changeStatus = (id: string, curr: Status) => {
+    const choices: Status[] = [
+      "Sedang Diproses",
+      "Belum Diambil",
+      "Telah Diambil",
+    ];
+    showOptions(
+      "Ganti Status Laundry",
+      [...choices, "Batal"],
+      choices.length,
+      async (i) => {
+        if (i >= choices.length) return;
+        const ns = choices[i];
+        if (ns === curr) return;
+        try {
+          await updateDoc(doc(db, "orders", id), { status: ns });
+          if (ns === "Telah Diambil") await deleteDoc(doc(db, "laundry", id));
+          else await updateDoc(doc(db, "laundry", id), { status: ns });
+        } catch (e) {
+          Alert.alert("Gagal", String(e));
+        }
+      }
+    );
+  };
+
+  const openPaymentModal = (id: string) => {
+    setActiveDocId(id);
+    setPayModalVisible(true);
+  };
+
+  const selectPaymentMethod = async (method: Payment) => {
+    if (!activeDocId) return;
+    try {
+      await updateDoc(doc(db, "laundry", activeDocId), { payment: method });
+      await updateDoc(doc(db, "orders", activeDocId), { payment: method });
+    } catch (e) {
+      Alert.alert("Gagal", String(e));
+    } finally {
+      setPayModalVisible(false);
+      setActiveDocId(null);
+    }
+  };
+
+  const openFilter = () => {
+    const opts: ("Semua" | Status | "Belum Bayar")[] = [
+      "Semua",
+      "Sedang Diproses",
+      "Belum Diambil",
+      "Belum Bayar",
+      "Telah Diambil",
+    ];
+    showOptions(
+      "Filter Status Laundry",
+      [...opts, "Batal"],
+      opts.length,
+      (i) => {
+        if (i < opts.length) setFilter(opts[i]);
+      }
+    );
+  };
+
+  const shown = data.filter((d) => {
+    const okStat =
+      filter === "Semua"
+        ? true
+        : filter === "Belum Bayar"
+        ? d.payment === "unpaid"
+        : d.status === filter;
+    const q = search.trim().toLowerCase();
+    return (
+      okStat &&
+      (q === "" ||
+        d.name.toLowerCase().includes(q) ||
+        String(d.orderNumber).includes(q))
+    );
+  });
+
+  const renderItem = ({ item }: { item: LaundryDoc }) => {
+    const [bg, fg, ico] = STATUS_META[item.status];
+    let cd = "",
+      late = false;
+    if (item.deadline) {
+      const diff = item.deadline.toDate().getTime() - Date.now();
+      late = diff < 0;
+      const dur = moment.duration(diff);
+      cd =
+        `${late ? "-" : ""}${Math.abs(dur.hours()).toString().padStart(2, "0")}:` +
+        `${Math.abs(dur.minutes()).toString().padStart(2, "0")}:` +
+        `${Math.abs(dur.seconds()).toString().padStart(2, "0")}`;
+    }
+
+    return (
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View>
+            <Text style={styles.name}>{item.name}</Text>
+            <Text style={styles.phone}>{item.phone}</Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.statusChip, { backgroundColor: bg }]}
+            onPress={() => changeStatus(item.id, item.status)}
+          >
+            <Text style={[styles.statusText, { color: fg }]}>
+              {ico} {item.status}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={styles.detailTitle}>Detail Cucian :</Text>
+        {item.items.map((it, i) => (
+          <Text key={i} style={styles.itemText}>
+            • {it}
+          </Text>
+        ))}
+
+        <View style={styles.bottomRow}>
+          {cd ? (
+            <Text style={[styles.deadline, late ? styles.late : styles.onTime]}>
+              Sisa {cd}
+            </Text>
+          ) : null}
+          {item.payment === "unpaid" && (
+            <TouchableOpacity onPress={() => openPaymentModal(item.id)}>
+              <Text style={styles.unpaid}>Belum Bayar</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+    );
+  };
+
+  if (loading)
+    return (
+      <ActivityIndicator style={{ flex: 1 }} size="large" color="#007AFF" />
+    );
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#F6FCFF" }}>
       <FlatList
         data={shown}
         keyExtractor={(i) => i.id}
         renderItem={renderItem}
-        contentContainerStyle={{ paddingBottom: 120 }}
+        ListHeaderComponent={
+          <TopSection
+            date={dateToday}
+            balance={balance}
+            income={income}
+            expense={expense}
+            loading={financeLoading}
+            search={search}
+            onSearch={setSearch}
+            onFilter={openFilter}
+            onSettings={() => router.push("/screens/setting/setting")}
+          />
+        }
+        contentContainerStyle={{
+          paddingHorizontal: 20,
+          paddingBottom: height * 0.15,
+        }}
         ListEmptyComponent={<Text>Tidak ada data</Text>}
       />
-    </View>
+
+      {/* Custom Modal for Payment */}
+      <Modal
+        visible={payModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPayModalVisible(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setPayModalVisible(false)}
+        >
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Pilih Metode Pembayaran</Text>
+            <View style={styles.modalButtonRow}>
+              {(["cash", "qris", "transfer"] as Payment[]).map((m) => (
+                <TouchableOpacity
+                  key={m}
+                  style={styles.modalButton}
+                  onPress={() => selectPaymentMethod(m)}
+                >
+                  <Text style={styles.modalButtonText}>{m.toUpperCase()}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
-/* ───────── styles ───────── */
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F6FCFF", padding: 20 },
-  header: { fontSize: 20, fontWeight: "bold", marginBottom: 2 },
-  subHeader: { fontSize: 16, marginBottom: 10 },
-
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  header: { fontSize: 20, fontWeight: "bold" },
+  subHeader: { fontSize: 16, marginBottom: 10, color: "#333" },
   settingsBtn: {
-    position: "absolute",
-    top: 21,
-    right: 15,
     backgroundColor: "#007AFF",
     borderRadius: 18,
     padding: 5,
-    zIndex: 30,
     elevation: 4,
+    marginTop: 5,
+    marginLeft: 3
   },
 
   balanceContainer: {
@@ -454,24 +484,14 @@ const styles = StyleSheet.create({
     borderColor: "#D6EBFF",
     borderWidth: 1,
   },
-  balanceDate: {
-    fontSize: 14,
-    fontWeight: "600",
-    marginBottom: 8,
-    color: "#666",
-  },
+  balanceDate: { fontSize: 14, fontWeight: "600", color: "#666" },
   balanceRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
   balanceBox: { flex: 1, alignItems: "center" },
-  balanceTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    marginBottom: 4,
-    color: "#333",
-  },
+  balanceTitle: { fontSize: 14, fontWeight: "600", marginBottom: 4 },
   balanceValue: { fontSize: 18, fontWeight: "bold" },
   incomeValue: { fontSize: 18, fontWeight: "bold", color: "#28A745" },
   expenseValue: { fontSize: 18, fontWeight: "bold", color: "#FF3B30" },
@@ -505,36 +525,61 @@ const styles = StyleSheet.create({
   cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 4,
+    marginBottom: 6,
   },
   name: { fontWeight: "700", fontSize: 16 },
   phone: { fontSize: 14 },
-  statusChip: { borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2 },
+
+  statusChip: {
+    borderRadius: 20,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    alignSelf: "flex-start",
+  },
+  statusText: { fontSize: 12, fontWeight: "600" },
 
   detailTitle: { marginTop: 4, fontWeight: "600" },
-  itemText: { fontSize: 14 },
+  itemText: { fontSize: 14, marginTop: 2 },
 
+  bottomRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 8,
+  },
   deadline: { fontSize: 12, fontWeight: "600" },
   onTime: { color: "#007AFF" },
   late: { color: "#FF3B30" },
   unpaid: { color: "#FF3B30", fontWeight: "700", fontSize: 12 },
 
-  /* autocomplete styles (reuse) */
-  autoWrap: { position: "relative", marginBottom: 12 },
-  autoList: {
-    position: "absolute",
-    top: 52,
-    left: 0,
-    right: 0,
-    maxHeight: 200,
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    elevation: 2,
-    zIndex: 20,
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  autoItem: {
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
+  modalContent: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 20,
+    width: "80%",
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 12,
+    textAlign: "center",
+  },
+  modalButtonRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+  },
+  modalButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  modalButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#007AFF",
   },
 });
