@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ScrollView,
   Modal,
+  Alert,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import DateTimePickerModal from "react-native-modal-datetime-picker";
@@ -27,6 +28,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 
+/* ───────────────────────────── TYPES ───────────────────────────── */
 type Step = 0 | 1 | 2;
 type PayMethod = "cash" | "qris" | "transfer" | "unpaid";
 
@@ -35,6 +37,7 @@ interface LaundryItem {
   weight: string;
   price: string;
   note: string;
+  unit: "kg" | "pcs";
 }
 interface CustomerInfo {
   id: string;
@@ -42,7 +45,9 @@ interface CustomerInfo {
   phone: string;
 }
 
+/* ───────────────────────── COMPONENT ───────────────────────── */
 export default function LaundryFormScreen() {
+  /* ---------- STATE ---------- */
   const [step, setStep] = useState<Step>(0);
   const [orderId, setOrderId] = useState<number | null>(null);
 
@@ -59,13 +64,12 @@ export default function LaundryFormScreen() {
   });
 
   const [items, setItems] = useState<LaundryItem[]>([
-    { service: "", weight: "", price: "", note: "" },
+    { service: "", weight: "", price: "", note: "", unit: "kg" },
   ]);
   const [serviceOptions, setServiceOptions] = useState<string[]>([]);
   const [openSvcIdx, setOpenSvcIdx] = useState<number | null>(null);
 
   const [pay, setPay] = useState<PayMethod>("unpaid");
-
   const [discountType, setDiscountType] = useState<"nominal" | "percent">(
     "nominal"
   );
@@ -73,7 +77,7 @@ export default function LaundryFormScreen() {
   const [discountAmount, setDiscountAmount] = useState<number>(0);
   const [isDiscountModalVisible, setDiscountModalVisible] = useState(false);
 
-  // Load customers
+  /* ─── LOAD FIRESTORE DATA ─── */
   useEffect(() => {
     const u = auth.currentUser;
     if (!u) return;
@@ -86,7 +90,6 @@ export default function LaundryFormScreen() {
     );
   }, []);
 
-  // Load service options
   useEffect(() => {
     const col = collection(db, "list_laundry");
     return onSnapshot(col, (snap) =>
@@ -102,26 +105,52 @@ export default function LaundryFormScreen() {
     );
   }, []);
 
-  // Generate orderId when entering review step
+  /* generate orderId ketika review */
   useEffect(() => {
     if (step === 2 && !orderId) setOrderId(Date.now());
   }, [step, orderId]);
 
+  /* ─── COMPUTED ─── */
   const filteredCust = customers.filter((c) =>
     c.phone.includes(phoneText.trim())
   );
   const totalHarga = items.reduce(
-    (sum, it) => sum + parseFloat(it.price || "0") * parseFloat(it.weight || "0"),
+    (s, it) => s + +it.weight * +it.price,
     0
   );
   const totalAfterDiscount = Math.max(0, totalHarga - discountAmount);
+  const roundedCashTotal =
+    pay === "cash" ? Math.ceil(totalAfterDiscount / 1000) * 1000 : totalAfterDiscount;
 
+  /* ─── HELPERS ─── */
   const addService = () =>
-    setItems([...items, { service: "", weight: "", price: "", note: "" }]);
-  const updateItem = (idx: number, key: keyof LaundryItem, val: string) => {
-    const a = [...items];
-    a[idx][key] = val;
-    setItems(a);
+    setItems([
+      ...items,
+      { service: "", weight: "", price: "", note: "", unit: "kg" },
+    ]);
+
+  const updateItem = <K extends keyof LaundryItem>(
+    idx: number,
+    key: K,
+    val: LaundryItem[K]
+  ) => {
+    const next = [...items];
+    next[idx][key] = val;
+    setItems(next);
+  };
+
+  const handleWeightBlur = (idx: number) => {
+    const w = parseFloat(items[idx].weight || "0");
+    if (w > 0 && w < 3 && items[idx].unit === "kg") {
+      Alert.alert(
+        "Konfirmasi Satuan",
+        `Jumlah ${w} kurang dari minimum 3 kg. Hitung per PCS atau tetap 3 kg?`,
+        [
+          { text: "Per PCS", onPress: () => updateItem(idx, "unit", "pcs") },
+          { text: "Minimal 3 KG", onPress: () => updateItem(idx, "weight", "3") },
+        ]
+      );
+    }
   };
 
   const openPicker = (which: "in" | "out") =>
@@ -132,11 +161,16 @@ export default function LaundryFormScreen() {
     closePicker();
   };
 
+  /* ─── SAVE ORDER ─── */
   const saveOrder = async () => {
-    if (!selectedCust) return alert("Pilih pelanggan terlebih dahulu!");
-    if (!orderId) return alert("ID pesanan belum dibuat.");
+    if (!selectedCust)
+      return Alert.alert("Perhatian", "Pilih pelanggan dahulu!");
+    if (!orderId)
+      return Alert.alert("Perhatian", "ID pesanan belum dibuat.");
     try {
-      // Save to orders
+      const total = roundedCashTotal;
+
+      /* ORDERS */
       await setDoc(doc(db, "orders", orderId.toString()), {
         orderNumber: orderId,
         customerId: selectedCust.id,
@@ -145,18 +179,25 @@ export default function LaundryFormScreen() {
         inDate,
         outDate,
         items,
-        total: totalHarga,
+        total,
         discount: discountAmount,
         payment: pay,
         ownerId: auth.currentUser?.uid,
         createdAt: serverTimestamp(),
       });
-      // Save to laundry (dashboard)
+
+      /* LAUNDRY (dashboard) */
       await setDoc(doc(db, "laundry", orderId.toString()), {
         orderNumber: orderId,
         name: selectedCust.name,
         phone: selectedCust.phone,
-        items: items.map((it) => `${it.service} ${it.weight}×`),
+        items: items.map((it) => {
+          const sub = (+it.weight * +it.price).toLocaleString("id-ID");
+          const note = it.note ? ` - ${it.note}` : "";
+          return `${it.service} ${it.weight}${
+            it.unit === "pcs" ? " pcs" : " kg"
+          } × Rp${it.price}${note} = Rp${sub}`;
+        }),
         status: "Sedang Diproses",
         payment: pay,
         deadline: outDate,
@@ -164,33 +205,39 @@ export default function LaundryFormScreen() {
         ownerId: auth.currentUser?.uid,
         createdAt: serverTimestamp(),
       });
-      // Increment customer totalOrders
+
+      /* increment customer */
       await updateDoc(doc(db, "customers", selectedCust.id), {
         totalOrders: increment(1),
       });
-      alert("Pesanan tersimpan.");
-      // Reset form
+
+      Alert.alert("Berhasil", "Pesanan tersimpan.");
+
+      /* reset */
       setStep(0);
       setOrderId(null);
       setSelectedCust(null);
       setPhoneText("");
       setInDate(null);
       setOutDate(null);
-      setItems([{ service: "", weight: "", price: "", note: "" }]);
+      setItems([{ service: "", weight: "", price: "", note: "", unit: "kg" }]);
       setPay("unpaid");
       setDiscountAmount(0);
       setDiscountInput("0");
     } catch (e: any) {
-      alert(e.message);
+      Alert.alert("Gagal", String(e.message || e));
     }
   };
 
+  /* ─── EXPORT PDF ─── */
   const exportToPdf = async () => {
     const rows = items
       .map(
         (it) => `<tr>
-          <td>${it.service}</td>
-          <td style="text-align:center;">${it.weight}</td>
+          <td>${it.service}${it.note ? `<br/><i>${it.note}</i>` : ""}</td>
+          <td style="text-align:center;">${it.weight}${
+          it.unit === "pcs" ? " pcs" : " kg"
+        }</td>
           <td style="text-align:right;">Rp${(+it.price).toLocaleString(
             "id-ID"
           )}</td>
@@ -200,21 +247,37 @@ export default function LaundryFormScreen() {
         </tr>`
       )
       .join("");
+
+    const totalTxt = roundedCashTotal.toLocaleString("id-ID");
+
     const html = `
       <html><head><meta charset="utf-8"/>
       <style>
         body{font-family:Arial;margin:24px;}
         table{width:100%;border-collapse:collapse;font-size:12px;}
-        th,td{border:1px solid #ccc;padding:6px}
+        th,td{border:1px solid #ccc;padding:6px;word-wrap:break-word;white-space:pre-wrap;}
+        hr{border:none;border-top:1px solid #000;margin:12px 0}
       </style>
       </head><body>
-      <h2>Laundry Order #${orderId}</h2>
-      <p><b>Nama:</b> ${selectedCust?.name}<br/><b>No. WA:</b> ${
-      selectedCust?.phone
-    }</p>
+      <h2 style="text-align:center;margin:0">IFA CELL &amp; LAUNDRY</h2>
+      <p style="text-align:center;margin:0">
+        Jln. Bumi Tamalanrea Permai No.18<br/>
+        Tamalanrea, Makassar, Sulawesi Selatan 90245<br/>
+        Telp: 0821-9482-2418
+      </p>
+      <hr/>
+      <h3>Nota Order #${orderId}</h3>
+      <p>
+        <b>Nama&nbsp;&nbsp;&nbsp;&nbsp;:</b> ${selectedCust?.name}<br/>
+        <b>No. WA&nbsp;:</b> ${selectedCust?.phone}<br/>
+        <b>Tgl/Jam Masuk&nbsp;&nbsp;&nbsp;&nbsp;:</b> ${inDate?.toLocaleString(
+          "id-ID"
+        )}<br/>
+        <b>Tgl/Jam Estimasi :</b> ${outDate?.toLocaleString("id-ID")}
+      </p>
       <table>
         <thead>
-          <tr><th>Layanan</th><th>Qty</th><th>Harga</th><th>Subtotal</th></tr>
+          <tr><th style="width:45%">Layanan</th><th>Qty</th><th>Harga</th><th>Subtotal</th></tr>
         </thead>
         <tbody>${rows}</tbody>
         <tfoot>
@@ -226,9 +289,7 @@ export default function LaundryFormScreen() {
           </tr>
           <tr>
             <td colspan="3" style="text-align:right;font-weight:bold">TOTAL</td>
-            <td style="text-align:right;font-weight:bold">Rp ${(
-      totalHarga - discountAmount
-    ).toLocaleString("id-ID")}</td>
+            <td style="text-align:right;font-weight:bold">Rp ${totalTxt}</td>
           </tr>
         </tfoot>
       </table>
@@ -242,6 +303,7 @@ export default function LaundryFormScreen() {
           : "Belum Bayar"
       }</p>
       </body></html>`;
+
     const { uri } = await Print.printToFileAsync({ html });
     await Sharing.shareAsync(uri, {
       UTI: ".pdf",
@@ -249,14 +311,14 @@ export default function LaundryFormScreen() {
     });
   };
 
-  /* ─── RENDER STEP 0 ─── */
+  /* ─── STEP 0 : Laundry ─── */
   const renderLaundryStep = () => (
     <KeyboardAwareScrollView
       contentContainerStyle={{ padding: 16, paddingBottom: 140 }}
       enableOnAndroid
       keyboardShouldPersistTaps="handled"
     >
-      {/* Phone + Autocomplete */}
+      {/* PHONE + AUTOCOMPLETE */}
       <View style={styles.autoWrap}>
         <TextInput
           ref={phoneInputRef}
@@ -290,6 +352,7 @@ export default function LaundryFormScreen() {
         )}
       </View>
 
+      {/* NAMA & DATE TIME */}
       <TextInput
         placeholder="Nama Pelanggan"
         style={styles.input}
@@ -303,7 +366,7 @@ export default function LaundryFormScreen() {
           onPress={() => openPicker("in")}
         >
           <Text style={{ color: inDate ? "#000" : "#888" }}>
-            {inDate ? inDate.toLocaleDateString() : "Tanggal Masuk"}
+            {inDate ? inDate.toLocaleString("id-ID") : "Tanggal & Jam Masuk"}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -311,17 +374,20 @@ export default function LaundryFormScreen() {
           onPress={() => openPicker("out")}
         >
           <Text style={{ color: outDate ? "#000" : "#888" }}>
-            {outDate ? outDate.toLocaleDateString() : "Tanggal Keluar"}
+            {outDate ? outDate.toLocaleString("id-ID") : "Tanggal & Jam Keluar"}
           </Text>
         </TouchableOpacity>
       </View>
 
+      {/* ITEM LIST */}
       {items.map((it, i) => (
         <View
           key={i}
           style={[styles.card, { marginBottom: 16, backgroundColor: "#EAF4FF" }]}
         >
           <Text style={styles.cardTitle}>Layanan #{i + 1}</Text>
+
+          {/* SERVICE + AUTOCOMPLETE */}
           <View style={styles.autoWrap}>
             <TextInput
               style={styles.input}
@@ -355,13 +421,15 @@ export default function LaundryFormScreen() {
             )}
           </View>
 
+          {/* QTY & PRICE */}
           <View style={styles.row}>
             <TextInput
-              placeholder="Jumlah (Kg/Pcs)"
+              placeholder={`Jumlah (${it.unit === "pcs" ? "Pcs" : "Kg"})`}
               style={[styles.numericInput, { flex: 1, marginRight: 6 }]}
               keyboardType="decimal-pad"
               value={it.weight}
               onChangeText={(t) => updateItem(i, "weight", t)}
+              onEndEditing={() => handleWeightBlur(i)}
             />
             <TextInput
               placeholder="Harga Satuan"
@@ -383,6 +451,7 @@ export default function LaundryFormScreen() {
             />
           </View>
 
+          {/* NOTE */}
           <TextInput
             placeholder="Catatan"
             style={[styles.input, { height: 70 }]}
@@ -401,6 +470,7 @@ export default function LaundryFormScreen() {
         </View>
       ))}
 
+      {/* TOTAL */}
       <View style={styles.totalContainer}>
         <Text style={{ fontWeight: "bold" }}>Estimasi Total :</Text>
         <Text style={{ fontWeight: "bold" }}>
@@ -414,7 +484,7 @@ export default function LaundryFormScreen() {
     </KeyboardAwareScrollView>
   );
 
-  /* ─── RENDER STEP 1 ─── */
+  /* ─── STEP 1 : Payment ─── */
   const renderPaymentStep = () => (
     <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 140 }}>
       <TouchableOpacity
@@ -482,7 +552,7 @@ export default function LaundryFormScreen() {
     </ScrollView>
   );
 
-  /* ─── RENDER STEP 2 ─── */
+  /* ─── STEP 2 : Review ─── */
   const renderReviewStep = () => (
     <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 140 }}>
       <TouchableOpacity
@@ -506,8 +576,8 @@ export default function LaundryFormScreen() {
         <Text style={styles.cardTitle}>Pelanggan</Text>
         <Text>Nama: {selectedCust?.name}</Text>
         <Text>No. WA: {selectedCust?.phone}</Text>
-        <Text>Tgl Masuk: {inDate?.toLocaleDateString()}</Text>
-        <Text>Tgl Keluar: {outDate?.toLocaleDateString()}</Text>
+        <Text>Tgl Masuk: {inDate?.toLocaleString("id-ID")}</Text>
+        <Text>Tgl Keluar: {outDate?.toLocaleString("id-ID")}</Text>
       </View>
 
       <View style={[styles.card, { marginTop: 16 }]}>
@@ -515,7 +585,8 @@ export default function LaundryFormScreen() {
         {items.map((it, i) => (
           <View key={i} style={{ marginBottom: 8 }}>
             <Text>
-              {it.service} · {it.weight}×Rp{it.price}
+              {it.service} · {it.weight}
+              {it.unit === "pcs" ? "pcs" : "kg"}×Rp{it.price}
             </Text>
             <Text>
               Subtotal: Rp{" "}
@@ -548,7 +619,7 @@ export default function LaundryFormScreen() {
         <View style={styles.detailRow}>
           <Text style={styles.detailLabel}>Sisa Bayar</Text>
           <Text style={styles.detailValue}>
-            Rp {totalAfterDiscount.toLocaleString("id-ID")}
+            Rp {roundedCashTotal.toLocaleString("id-ID")}
           </Text>
         </View>
         {discountAmount > 0 && (
@@ -580,6 +651,7 @@ export default function LaundryFormScreen() {
         <Text style={styles.btnTxt}>Simpan Pesanan</Text>
       </TouchableOpacity>
 
+      {/* DISCOUNT MODAL */}
       <Modal
         visible={isDiscountModalVisible}
         transparent
@@ -646,6 +718,7 @@ export default function LaundryFormScreen() {
     </ScrollView>
   );
 
+  /* ─── CONTAINER ─── */
   return (
     <View style={{ flex: 1, backgroundColor: "#F6FCFF" }}>
       <View style={styles.stepRow}>
@@ -669,7 +742,7 @@ export default function LaundryFormScreen() {
 
       <DateTimePickerModal
         isVisible={datePicker.open}
-        mode="date"
+        mode="datetime"
         onConfirm={onConfirmDate}
         onCancel={closePicker}
       />
@@ -677,7 +750,9 @@ export default function LaundryFormScreen() {
   );
 }
 
+/* ---------- STYLE SHEET ---------- */
 const styles = StyleSheet.create({
+  /* STEP HEADER */
   stepRow: {
     flexDirection: "row",
     justifyContent: "space-around",
@@ -688,6 +763,7 @@ const styles = StyleSheet.create({
   stepItem: { alignItems: "center" },
   stepLabel: { fontSize: 12, marginTop: 4, color: "#bbb" },
 
+  /* INPUTS */
   input: {
     backgroundColor: "#fff",
     borderRadius: 10,
@@ -711,6 +787,8 @@ const styles = StyleSheet.create({
     color: "#555",
   },
   row: { flexDirection: "row", marginBottom: 12 },
+
+  /* CARD */
   card: {
     backgroundColor: "#fff",
     borderRadius: 12,
@@ -718,6 +796,8 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   cardTitle: { fontWeight: "bold", marginBottom: 12, fontSize: 16 },
+
+  /* BUTTON */
   btnNext: {
     backgroundColor: "#007AFF",
     borderRadius: 12,
@@ -727,6 +807,7 @@ const styles = StyleSheet.create({
   },
   btnTxt: { color: "#fff", fontWeight: "600", fontSize: 16 },
 
+  /* TOTAL */
   totalContainer: {
     backgroundColor: "#fff",
     padding: 16,
@@ -736,6 +817,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
 
+  /* PAYMENT */
   paymentOption: {
     flexDirection: "row",
     alignItems: "center",
@@ -751,6 +833,7 @@ const styles = StyleSheet.create({
   },
   paymentText: { marginLeft: 10, fontSize: 16 },
 
+  /* AUTOCOMPLETE */
   autoWrap: { position: "relative", marginBottom: 12 },
   autoList: {
     position: "absolute",
@@ -769,6 +852,7 @@ const styles = StyleSheet.create({
     borderBottomColor: "#eee",
   },
 
+  /* REVIEW BLUE CARD */
   cardBlue: {
     backgroundColor: "#007AFF",
     borderRadius: 12,
@@ -790,6 +874,7 @@ const styles = StyleSheet.create({
   detailLabel: { color: "#fff", fontWeight: "bold" },
   detailValue: { color: "#fff", fontWeight: "bold" },
 
+  /* MODAL */
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",

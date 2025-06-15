@@ -32,6 +32,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { db, auth } from "../../config/private-config/config/firebaseConfig";
 
+/* ---------- TYPES ---------- */
 type Status = "Sedang Diproses" | "Belum Diambil" | "Telah Diambil";
 type Payment = "cash" | "qris" | "transfer" | "unpaid";
 
@@ -47,6 +48,7 @@ interface LaundryDoc {
   ownerId: string;
 }
 
+/* ---------- STATUS META ---------- */
 const STATUS_META: Record<Status, readonly [string, string, string]> = {
   "Sedang Diproses": ["#E1F0FF", "#007AFF", "🌀"],
   "Belum Diambil": ["#FFF3CD", "#FFA500", "📦"],
@@ -58,7 +60,7 @@ const STATUS_ORDER: Record<Status, number> = {
   "Telah Diambil": 2,
 };
 
-// Cross-platform ActionSheet helper
+/* ---------- HELPER: ACTION SHEET ---------- */
 function showOptions(
   title: string,
   options: string[],
@@ -71,7 +73,6 @@ function showOptions(
       callback
     );
   } else {
-    // Android fallback
     Alert.alert(
       title,
       undefined,
@@ -84,6 +85,7 @@ function showOptions(
   }
 }
 
+/* ---------- TOP SECTION ---------- */
 interface TopSectionProps {
   date: string;
   balance: number;
@@ -171,6 +173,7 @@ function TopSection({
   );
 }
 
+/* ─────────────────────────── COMPONENT ─────────────────────────── */
 export default function HomeScreen() {
   const router = useRouter();
   const user = auth.currentUser;
@@ -194,6 +197,7 @@ export default function HomeScreen() {
   const [payModalVisible, setPayModalVisible] = useState(false);
   const [activeDocId, setActiveDocId] = useState<string | null>(null);
 
+  /* ---------- LOAD LAUNDRY LIST ---------- */
   useEffect(() => {
     if (!user) return;
     const q = query(
@@ -216,11 +220,13 @@ export default function HomeScreen() {
     return unsub;
   }, [user]);
 
+  /* ---------- TICK FOR COUNTDOWN ---------- */
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(id);
   }, []);
 
+  /* ---------- DAILY FINANCE ---------- */
   useEffect(() => {
     if (!user) return;
     setFinanceLoading(true);
@@ -265,6 +271,7 @@ export default function HomeScreen() {
 
   useEffect(() => setBalance(income - expense), [income, expense]);
 
+  /* ---------- STATUS CHANGE ---------- */
   const changeStatus = (id: string, curr: Status) => {
     const choices: Status[] = [
       "Sedang Diproses",
@@ -290,11 +297,11 @@ export default function HomeScreen() {
     );
   };
 
+  /* ---------- PAYMENT ---------- */
   const openPaymentModal = (id: string) => {
     setActiveDocId(id);
     setPayModalVisible(true);
   };
-
   const selectPaymentMethod = async (method: Payment) => {
     if (!activeDocId) return;
     try {
@@ -308,6 +315,7 @@ export default function HomeScreen() {
     }
   };
 
+  /* ---------- FILTER ---------- */
   const openFilter = () => {
     const opts: ("Semua" | Status | "Belum Bayar")[] = [
       "Semua",
@@ -326,6 +334,7 @@ export default function HomeScreen() {
     );
   };
 
+  /* ---------- FILTERED DATA ---------- */
   const shown = data.filter((d) => {
     const okStat =
       filter === "Semua"
@@ -342,18 +351,24 @@ export default function HomeScreen() {
     );
   });
 
+  /* ---------- RENDER ITEM ---------- */
   const renderItem = ({ item }: { item: LaundryDoc }) => {
     const [bg, fg, ico] = STATUS_META[item.status];
+
+    /* ====== COUNTDOWN d + HH:MM:SS ====== */
     let cd = "",
       late = false;
     if (item.deadline) {
       const diff = item.deadline.toDate().getTime() - Date.now();
       late = diff < 0;
-      const dur = moment.duration(diff);
-      cd =
-        `${late ? "-" : ""}${Math.abs(dur.hours()).toString().padStart(2, "0")}:` +
-        `${Math.abs(dur.minutes()).toString().padStart(2, "0")}:` +
-        `${Math.abs(dur.seconds()).toString().padStart(2, "0")}`;
+      const absSec = Math.abs(Math.floor(diff / 1000));
+      const d = Math.floor(absSec / 86400);
+      const h = Math.floor((absSec % 86400) / 3600);
+      const m = Math.floor((absSec % 3600) / 60);
+      const s = absSec % 60;
+      cd = `${late ? "-" : ""}${d}d ${h.toString().padStart(2, "0")}:${m
+        .toString()
+        .padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
     }
 
     return (
@@ -396,11 +411,13 @@ export default function HomeScreen() {
     );
   };
 
+  /* ---------- LOADING STATE ---------- */
   if (loading)
     return (
       <ActivityIndicator style={{ flex: 1 }} size="large" color="#007AFF" />
     );
 
+  /* ---------- JSX ---------- */
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#F6FCFF" }}>
       <FlatList
@@ -427,7 +444,7 @@ export default function HomeScreen() {
         ListEmptyComponent={<Text>Tidak ada data</Text>}
       />
 
-      {/* Custom Modal for Payment */}
+      {/* ---------- MODAL PEMBAYARAN ---------- */}
       <Modal
         visible={payModalVisible}
         transparent
@@ -458,7 +475,9 @@ export default function HomeScreen() {
   );
 }
 
+/* ---------- STYLE SHEET ---------- */
 const styles = StyleSheet.create({
+  /* --- HEADER --- */
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -473,9 +492,10 @@ const styles = StyleSheet.create({
     padding: 5,
     elevation: 4,
     marginTop: 5,
-    marginLeft: 3
+    marginLeft: 3,
   },
 
+  /* --- BALANCE --- */
   balanceContainer: {
     backgroundColor: "#fff",
     borderRadius: 12,
@@ -496,6 +516,7 @@ const styles = StyleSheet.create({
   incomeValue: { fontSize: 18, fontWeight: "bold", color: "#28A745" },
   expenseValue: { fontSize: 18, fontWeight: "bold", color: "#FF3B30" },
 
+  /* --- TOOL ROW --- */
   toolsRow: { flexDirection: "row", marginBottom: 12 },
   search: {
     flex: 1,
@@ -514,6 +535,7 @@ const styles = StyleSheet.create({
     borderColor: "#007AFF",
   },
 
+  /* --- CARD (ITEM) --- */
   card: {
     backgroundColor: "#fff",
     borderRadius: 12,
@@ -539,7 +561,11 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 12, fontWeight: "600" },
 
   detailTitle: { marginTop: 4, fontWeight: "600" },
-  itemText: { fontSize: 14, marginTop: 2 },
+  itemText: {      /* ← memastikan detail tidak terpotong */
+    fontSize: 14,
+    marginTop: 2,
+    flexWrap: "wrap",
+  },
 
   bottomRow: {
     flexDirection: "row",
@@ -551,6 +577,7 @@ const styles = StyleSheet.create({
   late: { color: "#FF3B30" },
   unpaid: { color: "#FF3B30", fontWeight: "700", fontSize: 12 },
 
+  /* --- MODAL --- */
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.4)",
