@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from "react";
 import {
   ActivityIndicator,
   DeviceEventEmitter,
@@ -10,13 +10,19 @@ import {
   ToastAndroid,
   View,
   Button,
-  EmitterSubscription,
-} from 'react-native';
-import { BluetoothManager } from 'react-native-bluetooth-escpos-printer';
-import { PERMISSIONS, requestMultiple, RESULTS } from 'react-native-permissions';
-import ItemList from './ItemList';
-import SamplePrint from './SamplePrint';
-import { styles, getBluetoothStatusStyle } from './styles';
+  TouchableOpacity,
+} from "react-native";
+import { BluetoothManager } from "react-native-bluetooth-escpos-printer";
+import {
+  PERMISSIONS,
+  requestMultiple,
+  RESULTS,
+} from "react-native-permissions";
+import Icon from "@expo/vector-icons/Ionicons"; // Pastikan sudah install
+import ItemList from "./ItemList";
+import SamplePrint from "./SamplePrint";
+import { styles, getBluetoothStatusStyle } from "./styles";
+import { router, useRouter } from "expo-router";
 
 type BluetoothDevice = {
   name?: string;
@@ -28,20 +34,18 @@ type ScanDevicesResult = {
   paired: string;
 };
 
-// Main application component
-// This component handles the Bluetooth connection and device management
 function App() {
   const [pairedDevices, setPairedDevices] = useState<BluetoothDevice[]>([]);
   const [foundDs, setFoundDs] = useState<BluetoothDevice[]>([]);
   const [bleOpend, setBleOpend] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
-  const [name, setName] = useState<string>('');
-  const [boundAddress, setBoundAddress] = useState<string>('');
+  const [name, setName] = useState<string>("");
+  const [boundAddress, setBoundAddress] = useState<string>("");
 
   const deviceAlreadPaired = useCallback(
     (rsp: any) => {
       let ds: BluetoothDevice[] | null = null;
-      if (typeof rsp.devices === 'object') {
+      if (typeof rsp.devices === "object") {
         ds = rsp.devices;
       } else {
         try {
@@ -63,12 +67,13 @@ function App() {
     (rsp: any) => {
       let r: BluetoothDevice | null = null;
       try {
-        r = typeof rsp.device === 'object' ? rsp.device : JSON.parse(rsp.device);
+        r =
+          typeof rsp.device === "object" ? rsp.device : JSON.parse(rsp.device);
       } catch (e) {}
 
       if (r) {
         const found = [...foundDs];
-        if (!found.find(x => x.address === r!.address)) {
+        if (!found.find((x) => x.address === r!.address)) {
           found.push(r);
           setFoundDs(found);
         }
@@ -78,32 +83,32 @@ function App() {
   );
 
   const scanDevices = useCallback(() => {
-  setLoading(true);
-  BluetoothManager.scanDevices().then(
-    (s: ScanDevicesResult) => {
-      let found: BluetoothDevice[] = [];
-      try {
-        found = JSON.parse(s.found);
-      } catch (e) {}
-      if (found && found.length) {
-        setFoundDs(found);
+    setLoading(true);
+    BluetoothManager.scanDevices().then(
+      (s: ScanDevicesResult) => {
+        let found: BluetoothDevice[] = [];
+        try {
+          found = JSON.parse(s.found);
+        } catch (e) {}
+        if (found && found.length) {
+          setFoundDs(found);
+        }
+        setLoading(false);
+      },
+      (_: unknown) => {
+        setLoading(false);
       }
-      setLoading(false);
-    },
-    (_: unknown) => {
-      setLoading(false);
-    }
-  );
-}, []);
-
+    );
+  }, []);
 
   const scan = useCallback(() => {
     const permissions = {
-      title: 'HSD bluetooth meminta izin untuk mengakses bluetooth',
-      message: 'HSD bluetooth memerlukan akses ke bluetooth untuk proses koneksi ke bluetooth printer',
-      buttonNeutral: 'Lain Waktu',
-      buttonNegative: 'Tidak',
-      buttonPositive: 'Boleh',
+      title: "HSD bluetooth meminta izin untuk mengakses bluetooth",
+      message:
+        "HSD bluetooth memerlukan akses ke bluetooth untuk proses koneksi ke bluetooth printer",
+      buttonNeutral: "Lain Waktu",
+      buttonNegative: "Tidak",
+      buttonPositive: "Boleh",
     };
 
     async function blueTooth() {
@@ -137,7 +142,7 @@ function App() {
       (_: unknown) => {
         setLoading(false);
         setBoundAddress(row.address);
-        setName(row.name || 'UNKNOWN');
+        setName(row.name || "UNKNOWN");
       },
       (e: unknown) => {
         setLoading(false);
@@ -151,8 +156,8 @@ function App() {
     BluetoothManager.unpaire(address).then(
       (_: unknown) => {
         setLoading(false);
-        setBoundAddress('');
-        setName('');
+        setBoundAddress("");
+        setName("");
       },
       (e: unknown) => {
         setLoading(false);
@@ -170,7 +175,9 @@ function App() {
         PERMISSIONS.ANDROID.ACCESS_FINE_LOCATION,
       ]);
 
-      if (request['android.permission.ACCESS_FINE_LOCATION'] === RESULTS.GRANTED) {
+      if (
+        request["android.permission.ACCESS_FINE_LOCATION"] === RESULTS.GRANTED
+      ) {
         scanDevices();
       }
     } catch (_) {
@@ -188,24 +195,48 @@ function App() {
       (_: unknown) => {}
     );
 
-    if (Platform.OS === 'ios') {
+    if (Platform.OS === "ios") {
       const bluetoothManagerEmitter = new NativeEventEmitter(BluetoothManager);
-      bluetoothManagerEmitter.addListener(BluetoothManager.EVENT_DEVICE_ALREADY_PAIRED, deviceAlreadPaired);
-      bluetoothManagerEmitter.addListener(BluetoothManager.EVENT_DEVICE_FOUND, deviceFoundEvent);
-      bluetoothManagerEmitter.addListener(BluetoothManager.EVENT_CONNECTION_LOST, () => {
-        setName('');
-        setBoundAddress('');
-      });
-    } else if (Platform.OS === 'android') {
-      DeviceEventEmitter.addListener(BluetoothManager.EVENT_DEVICE_ALREADY_PAIRED, deviceAlreadPaired);
-      DeviceEventEmitter.addListener(BluetoothManager.EVENT_DEVICE_FOUND, deviceFoundEvent);
-      DeviceEventEmitter.addListener(BluetoothManager.EVENT_CONNECTION_LOST, () => {
-        setName('');
-        setBoundAddress('');
-      });
-      DeviceEventEmitter.addListener(BluetoothManager.EVENT_BLUETOOTH_NOT_SUPPORT, () => {
-        ToastAndroid.show('Device Not Support Bluetooth !', ToastAndroid.LONG);
-      });
+      bluetoothManagerEmitter.addListener(
+        BluetoothManager.EVENT_DEVICE_ALREADY_PAIRED,
+        deviceAlreadPaired
+      );
+      bluetoothManagerEmitter.addListener(
+        BluetoothManager.EVENT_DEVICE_FOUND,
+        deviceFoundEvent
+      );
+      bluetoothManagerEmitter.addListener(
+        BluetoothManager.EVENT_CONNECTION_LOST,
+        () => {
+          setName("");
+          setBoundAddress("");
+        }
+      );
+    } else if (Platform.OS === "android") {
+      DeviceEventEmitter.addListener(
+        BluetoothManager.EVENT_DEVICE_ALREADY_PAIRED,
+        deviceAlreadPaired
+      );
+      DeviceEventEmitter.addListener(
+        BluetoothManager.EVENT_DEVICE_FOUND,
+        deviceFoundEvent
+      );
+      DeviceEventEmitter.addListener(
+        BluetoothManager.EVENT_CONNECTION_LOST,
+        () => {
+          setName("");
+          setBoundAddress("");
+        }
+      );
+      DeviceEventEmitter.addListener(
+        BluetoothManager.EVENT_BLUETOOTH_NOT_SUPPORT,
+        () => {
+          ToastAndroid.show(
+            "Device Not Support Bluetooth !",
+            ToastAndroid.LONG
+          );
+        }
+      );
     }
 
     if (pairedDevices.length < 1) {
@@ -214,44 +245,104 @@ function App() {
   }, [boundAddress, deviceAlreadPaired, deviceFoundEvent, pairedDevices, scan]);
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.bluetoothStatusContainer}>
-        <Text style={getBluetoothStatusStyle(bleOpend ? '#47BF34' : '#A8A9AA')}>
-          Bluetooth {bleOpend ? 'Aktif' : 'Non Aktif'}
+    <View style={{ flex: 1, backgroundColor: "#F5F5F5" }}>
+      {/* Tombol kembali */}
+      <View style={{ flexDirection: "row", alignItems: "center", padding: 16 }}>
+        <TouchableOpacity onPress={() => router.push("/screens/setting/setting")}>
+          <Icon name="arrow-back" size={24} color="#007BFF" />
+        </TouchableOpacity>
+        <Text style={{ fontSize: 18, marginLeft: 10, fontWeight: "bold" }}>
+          Pengaturan Bluetooth
         </Text>
       </View>
-      {!bleOpend && <Text style={styles.bluetoothInfo}>Mohon aktifkan bluetooth anda</Text>}
-      <Text style={styles.sectionTitle}>Printer yang terhubung ke aplikasi:</Text>
-      {boundAddress.length > 0 ? (
-        <ItemList
-          label={name}
-          value={boundAddress}
-          onPress={() => unPair(boundAddress)}
-          actionText="Putus"
-          color="#E9493F"
-        />
-      ) : (
-        <Text style={styles.printerInfo}>Belum ada printer yang terhubung</Text>
-      )}
-      <Text style={styles.sectionTitle}>Bluetooth yang terhubung ke HP ini:</Text>
-      {loading && <ActivityIndicator animating />}
-      <View style={styles.containerList}>
-        {pairedDevices.map((item, index) => (
+
+      <ScrollView contentContainerStyle={{ padding: 16 }}>
+        <View style={[styles.bluetoothStatusContainer, { marginBottom: 12 }]}>
+          <Text
+            style={[
+              getBluetoothStatusStyle(bleOpend ? "#47BF34" : "#A8A9AA"),
+              { fontWeight: "bold", fontSize: 16 },
+            ]}
+          >
+            Bluetooth {bleOpend ? "Aktif" : "Non Aktif"}
+          </Text>
+        </View>
+
+        {!bleOpend && (
+          <Text
+            style={[
+              styles.bluetoothInfo,
+              { color: "#E9493F", marginBottom: 16 },
+            ]}
+          >
+            Mohon aktifkan bluetooth anda
+          </Text>
+        )}
+
+        <Text style={[styles.sectionTitle, { color: "#333", marginBottom: 8 }]}>
+          Printer yang terhubung ke aplikasi:
+        </Text>
+
+        {boundAddress.length > 0 ? (
           <ItemList
-            key={index}
-            onPress={() => connect(item)}
-            label={item.name}
-            value={item.address}
-            connected={item.address === boundAddress}
-            actionText="Hubungkan"
-            color="#00BCD4"
+            label={name}
+            value={boundAddress}
+            onPress={() => unPair(boundAddress)}
+            actionText="Putus"
+            color="#E9493F"
           />
-        ))}
-      </View>
-      <SamplePrint />
-      <Button title="Scan Bluetooth" onPress={scanBluetoothDevice} />
-      <View style={{ height: 100 }} />
-    </ScrollView>
+        ) : (
+          <Text
+            style={[
+              styles.printerInfo,
+              { color: "#666", fontStyle: "italic", marginBottom: 16 },
+            ]}
+          >
+            Belum ada printer yang terhubung
+          </Text>
+        )}
+
+        <Text style={[styles.sectionTitle, { color: "#333", marginTop: 16 }]}>
+          Bluetooth yang terhubung ke HP ini:
+        </Text>
+
+        {loading && (
+          <ActivityIndicator
+            size="small"
+            color="#007BFF"
+            style={{ marginVertical: 10 }}
+          />
+        )}
+
+        <View style={[styles.containerList, { marginBottom: 16 }]}>
+          {pairedDevices.map((item, index) => (
+            <ItemList
+              key={index}
+              onPress={() => connect(item)}
+              label={item.name}
+              value={item.address}
+              connected={item.address === boundAddress}
+              actionText="Hubungkan"
+              color="#007BFF"
+            />
+          ))}
+        </View>
+
+        <SamplePrint />
+
+        <View style={{ alignItems: "center", marginBottom: 12 }}>
+          <View style={{ width: "80%" }}>
+            <Button
+              title="Scan Bluetooth"
+              color="#007BFF"
+              onPress={scanBluetoothDevice}
+            />
+          </View>
+        </View>
+
+        <View style={{ height: 100 }} />
+      </ScrollView>
+    </View>
   );
 }
 

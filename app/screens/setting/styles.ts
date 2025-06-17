@@ -5,47 +5,54 @@ type BluetoothStatusStyle = (color: string) => TextStyle;
 export const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 40,
+    paddingTop: 32,
     paddingHorizontal: 20,
+    backgroundColor: '#F8F9FA',
   } as ViewStyle,
 
   containerList: {
     flex: 1,
     flexDirection: 'column',
+    marginBottom: 20,
   } as ViewStyle,
 
   bluetoothStatusContainer: {
-    justifyContent: 'flex-end',
-    alignSelf: 'flex-end',
+    alignItems: 'flex-end',
+    marginBottom: 8,
   } as ViewStyle,
 
   bluetoothInfo: {
     textAlign: 'center',
-    fontSize: 16,
-    color: '#FFC806',
-    marginBottom: 20,
+    fontSize: 15,
+    color: '#FFC107',
+    marginBottom: 16,
   } as TextStyle,
 
   sectionTitle: {
-    fontWeight: 'bold',
-    fontSize: 18,
+    fontWeight: '600',
+    fontSize: 17,
     marginBottom: 12,
+    color: '#343A40',
   } as TextStyle,
 
   printerInfo: {
     textAlign: 'center',
-    fontSize: 16,
-    color: '#E9493F',
+    fontSize: 15,
+    color: '#6C757D',
     marginBottom: 20,
   } as TextStyle,
+
+  buttonContainer: {
+    marginTop: 20,
+    marginBottom: 40,
+  } as ViewStyle,
 });
 
-// Fungsi terpisah untuk style dinamis
 export const getBluetoothStatusStyle: BluetoothStatusStyle = (color: string) => ({
   backgroundColor: color,
-  padding: 8,
-  borderRadius: 2,
+  paddingVertical: 6,
+  paddingHorizontal: 12,
+  borderRadius: 6,
   color: 'white',
-  paddingHorizontal: 14,
-  marginBottom: 20,
+  fontSize: 13,
 });
