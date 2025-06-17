@@ -27,6 +27,7 @@ import { auth, db } from "../../config/private-config/config/firebaseConfig";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
+import SamplePrint from "./setting/SamplePrint";
 
 /* ───────────────────────────── TYPES ───────────────────────────── */
 type Step = 0 | 1 | 2;
@@ -44,6 +45,179 @@ interface CustomerInfo {
   name: string;
   phone: string;
 }
+
+/* ---------- STYLE SHEET ---------- */
+const styles = StyleSheet.create({
+  /* STEP HEADER */
+  stepRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    paddingVertical: 15,
+    backgroundColor: "#fff",
+    elevation: 2,
+  },
+  stepItem: { alignItems: "center" },
+  stepLabel: { fontSize: 12, marginTop: 4, color: "#bbb" },
+
+  /* INPUTS */
+  input: {
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+    color: "#000",
+  },
+  numericInput: {
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+    color: "#000",
+    textAlign: "center",
+  },
+  readonlyInput: {
+    backgroundColor: "#f2f2f2",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+    color: "#555",
+  },
+  row: { flexDirection: "row", marginBottom: 12 },
+
+  /* CARD */
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 16,
+    elevation: 1,
+  },
+  cardTitle: { fontWeight: "bold", marginBottom: 12, fontSize: 16 },
+
+  /* BUTTON */
+  btnNext: {
+    backgroundColor: "#007AFF",
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginTop: 16,
+  },
+  btnTxt: { color: "#fff", fontWeight: "600", fontSize: 16 },
+
+  /* TOTAL */
+  totalContainer: {
+    backgroundColor: "#fff",
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+
+  /* PAYMENT */
+  paymentOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#ccc",
+    marginBottom: 10,
+  },
+  paymentOptionSelected: {
+    borderColor: "#007AFF",
+    backgroundColor: "#EAF4FF",
+  },
+  paymentText: { marginLeft: 10, fontSize: 16 },
+
+  /* AUTOCOMPLETE */
+  autoWrap: { position: "relative", marginBottom: 12 },
+  autoList: {
+    position: "absolute",
+    top: 52,
+    left: 0,
+    right: 0,
+    maxHeight: 200,
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    elevation: 2,
+    zIndex: 20,
+  },
+  autoItem: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+
+  /* REVIEW BLUE CARD */
+  cardBlue: {
+    backgroundColor: "#007AFF",
+    borderRadius: 12,
+    padding: 16,
+    marginVertical: 16,
+  },
+  btnDiscount: {
+    marginTop: 12,
+    backgroundColor: "#28A745",
+    padding: 10,
+    borderRadius: 8,
+    alignSelf: "flex-end",
+  },
+  detailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
+  detailLabel: { color: "#fff", fontWeight: "bold" },
+  detailValue: { color: "#fff", fontWeight: "bold" },
+
+  /* MODAL */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContent: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 20,
+    width: "80%",
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    textAlign: "center",
+  },
+  radioRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginVertical: 12,
+  },
+  radio: {
+    flex: 1,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 8,
+    marginHorizontal: 4,
+    alignItems: "center",
+  },
+  radioActive: {
+    flex: 1,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#007AFF",
+    backgroundColor: "#EAF4FF",
+    borderRadius: 8,
+    marginHorizontal: 4,
+    alignItems: "center",
+  },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 16,
+  },
+});
 
 /* ───────────────────────── COMPONENT ───────────────────────── */
 export default function LaundryFormScreen() {
@@ -115,10 +289,7 @@ export default function LaundryFormScreen() {
   const filteredCust = customers.filter((c) =>
     c.phone.includes(phoneText.trim())
   );
-  const totalHarga = items.reduce(
-    (s, it) => s + +it.weight * +it.price,
-    0
-  );
+  const totalHarga = items.reduce((s, it) => s + +it.weight * +it.price, 0);
   const totalAfterDiscount = Math.max(0, totalHarga - discountAmount);
   const roundedCashTotal =
     pay === "cash"
@@ -150,7 +321,10 @@ export default function LaundryFormScreen() {
         `Jumlah ${w} kurang dari minimum 3 kg. Hitung per PCS atau tetap 3 kg?`,
         [
           { text: "Per PCS", onPress: () => updateItem(idx, "unit", "pcs") },
-          { text: "Minimal 3 KG", onPress: () => updateItem(idx, "weight", "3") },
+          {
+            text: "Minimal 3 KG",
+            onPress: () => updateItem(idx, "weight", "3"),
+          },
         ]
       );
     }
@@ -168,8 +342,7 @@ export default function LaundryFormScreen() {
   const saveOrder = async () => {
     if (!selectedCust)
       return Alert.alert("Perhatian", "Pilih pelanggan dahulu!");
-    if (!orderId)
-      return Alert.alert("Perhatian", "ID pesanan belum dibuat.");
+    if (!orderId) return Alert.alert("Perhatian", "ID pesanan belum dibuat.");
     try {
       const total = roundedCashTotal;
 
@@ -392,7 +565,10 @@ export default function LaundryFormScreen() {
       {items.map((it, i) => (
         <View
           key={i}
-          style={[styles.card, { marginBottom: 16, backgroundColor: "#EAF4FF" }]}
+          style={[
+            styles.card,
+            { marginBottom: 16, backgroundColor: "#EAF4FF" },
+          ]}
         >
           <Text style={styles.cardTitle}>Layanan #{i + 1}</Text>
 
@@ -508,7 +684,7 @@ export default function LaundryFormScreen() {
         <Text style={{ fontWeight: "bold", marginBottom: 8 }}>
           Detail Pelanggan
         </Text>
-        <Text>Nama  : {selectedCust?.name}</Text>
+        <Text>Nama : {selectedCust?.name}</Text>
         <Text>No WA : {selectedCust?.phone}</Text>
         <Text>Total : Rp {totalHarga.toLocaleString("id-ID")}</Text>
       </View>
@@ -562,178 +738,196 @@ export default function LaundryFormScreen() {
   );
 
   /* ─── STEP 2 : Review ─── */
-  const renderReviewStep = () => (
-    <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 140 }}>
-      <TouchableOpacity
-        onPress={() => setStep(1)}
-        style={{ flexDirection: "row", alignItems: "center", marginBottom: 16 }}
-      >
-        <Ionicons name="arrow-back" size={20} color="#007AFF" />
-        <Text style={{ color: "#007AFF", marginLeft: 4 }}>Kembali</Text>
-      </TouchableOpacity>
-
-      <Text style={{ fontSize: 18, fontWeight: "bold", marginBottom: 16 }}>
-        Review Pesanan
-      </Text>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Nomor Pesanan</Text>
-        <Text>{orderId}</Text>
-      </View>
-
-      <View style={[styles.card, { marginTop: 16 }]}>
-        <Text style={styles.cardTitle}>Pelanggan</Text>
-        <Text>Nama: {selectedCust?.name}</Text>
-        <Text>No. WA: {selectedCust?.phone}</Text>
-        <Text>Tgl Masuk: {inDate?.toLocaleString("id-ID")}</Text>
-        <Text>Tgl Keluar: {outDate?.toLocaleString("id-ID")}</Text>
-      </View>
-
-      <View style={[styles.card, { marginTop: 16 }]}>
-        <Text style={styles.cardTitle}>Detail Layanan</Text>
-        {items.map((it, i) => (
-          <View key={i} style={{ marginBottom: 8 }}>
-            <Text>
-              {it.service} · {it.weight}
-              {it.unit === "pcs" ? "pcs" : "kg"}×Rp{it.price}
-            </Text>
-            <Text>
-              Subtotal: Rp{" "}
-              {(
-                parseFloat(it.weight || "0") * parseFloat(it.price || "0")
-              ).toLocaleString("id-ID")}
-            </Text>
-            {it.note ? <Text>Catatan: {it.note}</Text> : null}
-          </View>
-        ))}
-        <Text style={{ fontWeight: "bold", marginTop: 8 }}>
-          Total: Rp {totalHarga.toLocaleString("id-ID")}
-        </Text>
-      </View>
-
-      <View style={[styles.card, { marginTop: 16 }]}>
-        <Text style={styles.cardTitle}>Metode Pembayaran</Text>
-        <Text>
-          {pay === "cash"
-            ? "Cash"
-            : pay === "qris"
-            ? "QRIS"
-            : pay === "transfer"
-            ? "Transfer"
-            : "Belum Bayar"}
-        </Text>
-      </View>
-
-      <View style={styles.cardBlue}>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Sisa Bayar</Text>
-          <Text style={styles.detailValue}>
-            Rp {roundedCashTotal.toLocaleString("id-ID")}
-          </Text>
-        </View>
-        {discountAmount > 0 && (
-          <Text style={{ color: "#ffdddd" }}>
-            Diskon: -Rp {discountAmount.toLocaleString("id-ID")}
-          </Text>
-        )}
+  const renderReviewStep = () => {
+    const orderData = {
+      customerName: selectedCust?.name,
+      phone: selectedCust?.phone,
+      inDate,
+      outDate,
+      items,
+      total: roundedCashTotal,
+      discount: discountAmount,
+      payment: pay,
+    };
+    return (
+      /* objek yang akan dikirim ke komponen SamplePrint */
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 140 }}>
         <TouchableOpacity
-          style={styles.btnDiscount}
-          onPress={() => setDiscountModalVisible(true)}
+          onPress={() => setStep(1)}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            marginBottom: 16,
+          }}
         >
-          <Text style={{ color: "#fff", fontWeight: "bold" }}>
-            Gunakan Diskon
-          </Text>
+          <Ionicons name="arrow-back" size={20} color="#007AFF" />
+          <Text style={{ color: "#007AFF", marginLeft: 4 }}>Kembali</Text>
         </TouchableOpacity>
-      </View>
 
-      {/* ===== BUTTONS ===== */}
-      <TouchableOpacity
-        style={[styles.btnNext, { marginTop: 20 }]}
-        onPress={exportToPdf}
-      >
-        <Text style={styles.btnTxt}>Simpan ke PDF</Text>
-      </TouchableOpacity>
+        <Text style={{ fontSize: 18, fontWeight: "bold", marginBottom: 16 }}>
+          Review Pesanan
+        </Text>
 
-      <TouchableOpacity
-        style={[styles.btnNext, { marginTop: 12, backgroundColor: "#28A745" }]}
-        onPress={printOwnerReceipt}
-      >
-        <Text style={styles.btnTxt}>Cetak Struk Owner</Text>
-      </TouchableOpacity>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Nomor Pesanan</Text>
+          <Text>{orderId}</Text>
+        </View>
 
-      <TouchableOpacity
-        style={[styles.btnNext, { marginTop: 12 }]}
-        onPress={saveOrder}
-      >
-        <Text style={styles.btnTxt}>Simpan Pesanan</Text>
-      </TouchableOpacity>
+        <View style={[styles.card, { marginTop: 16 }]}>
+          <Text style={styles.cardTitle}>Pelanggan</Text>
+          <Text>Nama: {selectedCust?.name}</Text>
+          <Text>No. WA: {selectedCust?.phone}</Text>
+          <Text>Tgl Masuk: {inDate?.toLocaleString("id-ID")}</Text>
+          <Text>Tgl Keluar: {outDate?.toLocaleString("id-ID")}</Text>
+        </View>
 
-      {/* DISCOUNT MODAL */}
-      <Modal
-        visible={isDiscountModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setDiscountModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Tambah Diskon</Text>
-            <View style={styles.radioRow}>
-              <TouchableOpacity
-                onPress={() => setDiscountType("nominal")}
-                style={
-                  discountType === "nominal" ? styles.radioActive : styles.radio
-                }
-              >
-                <Text>Diskon (Rp)</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setDiscountType("percent")}
-                style={
-                  discountType === "percent" ? styles.radioActive : styles.radio
-                }
-              >
-                <Text>Diskon (%)</Text>
-              </TouchableOpacity>
+        <View style={[styles.card, { marginTop: 16 }]}>
+          <Text style={styles.cardTitle}>Detail Layanan</Text>
+          {items.map((it, i) => (
+            <View key={i} style={{ marginBottom: 8 }}>
+              <Text>
+                {it.service} · {it.weight}
+                {it.unit === "pcs" ? "pcs" : "kg"}×Rp{it.price}
+              </Text>
+              <Text>
+                Subtotal: Rp{" "}
+                {(
+                  parseFloat(it.weight || "0") * parseFloat(it.price || "0")
+                ).toLocaleString("id-ID")}
+              </Text>
+              {it.note ? <Text>Catatan: {it.note}</Text> : null}
             </View>
-            <TextInput
-              style={styles.input}
-              keyboardType="decimal-pad"
-              value={discountInput}
-              onChangeText={setDiscountInput}
-              placeholder={
-                discountType === "nominal"
-                  ? "Masukkan jumlah Rp"
-                  : "Masukkan persen"
-              }
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                onPress={() => setDiscountModalVisible(false)}
-              >
-                <Text style={{ color: "red", fontWeight: "bold" }}>Batal</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => {
-                  const v = parseFloat(discountInput) || 0;
-                  const amt =
+          ))}
+          <Text style={{ fontWeight: "bold", marginTop: 8 }}>
+            Total: Rp {totalHarga.toLocaleString("id-ID")}
+          </Text>
+        </View>
+
+        <View style={[styles.card, { marginTop: 16 }]}>
+          <Text style={styles.cardTitle}>Metode Pembayaran</Text>
+          <Text>
+            {pay === "cash"
+              ? "Cash"
+              : pay === "qris"
+              ? "QRIS"
+              : pay === "transfer"
+              ? "Transfer"
+              : "Belum Bayar"}
+          </Text>
+        </View>
+
+        <View style={styles.cardBlue}>
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Sisa Bayar</Text>
+            <Text style={styles.detailValue}>
+              Rp {roundedCashTotal.toLocaleString("id-ID")}
+            </Text>
+          </View>
+          {discountAmount > 0 && (
+            <Text style={{ color: "#ffdddd" }}>
+              Diskon: -Rp {discountAmount.toLocaleString("id-ID")}
+            </Text>
+          )}
+          <TouchableOpacity
+            style={styles.btnDiscount}
+            onPress={() => setDiscountModalVisible(true)}
+          >
+            <Text style={{ color: "#fff", fontWeight: "bold" }}>
+              Gunakan Diskon
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* ===== BUTTONS ===== */}
+        <TouchableOpacity
+          style={[styles.btnNext, { marginTop: 20 }]}
+          onPress={exportToPdf}
+        >
+          <Text style={styles.btnTxt}>Simpan ke PDF</Text>
+        </TouchableOpacity>
+
+        <SamplePrint orderData={orderData} />
+
+        <TouchableOpacity
+          style={[styles.btnNext, { marginTop: 12 }]}
+          onPress={saveOrder}
+        >
+          <Text style={styles.btnTxt}>Simpan Pesanan</Text>
+        </TouchableOpacity>
+
+        {/* DISCOUNT MODAL */}
+        <Modal
+          visible={isDiscountModalVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setDiscountModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Tambah Diskon</Text>
+              <View style={styles.radioRow}>
+                <TouchableOpacity
+                  onPress={() => setDiscountType("nominal")}
+                  style={
                     discountType === "nominal"
-                      ? v
-                      : Math.round((totalHarga * v) / 100);
-                  setDiscountAmount(amt);
-                  setDiscountModalVisible(false);
-                }}
-              >
-                <Text style={{ color: "green", fontWeight: "bold" }}>
-                  Konfirmasi
-                </Text>
-              </TouchableOpacity>
+                      ? styles.radioActive
+                      : styles.radio
+                  }
+                >
+                  <Text>Diskon (Rp)</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setDiscountType("percent")}
+                  style={
+                    discountType === "percent"
+                      ? styles.radioActive
+                      : styles.radio
+                  }
+                >
+                  <Text>Diskon (%)</Text>
+                </TouchableOpacity>
+              </View>
+              <TextInput
+                style={styles.input}
+                keyboardType="decimal-pad"
+                value={discountInput}
+                onChangeText={setDiscountInput}
+                placeholder={
+                  discountType === "nominal"
+                    ? "Masukkan jumlah Rp"
+                    : "Masukkan persen"
+                }
+              />
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  onPress={() => setDiscountModalVisible(false)}
+                >
+                  <Text style={{ color: "red", fontWeight: "bold" }}>
+                    Batal
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    const v = parseFloat(discountInput) || 0;
+                    const amt =
+                      discountType === "nominal"
+                        ? v
+                        : Math.round((totalHarga * v) / 100);
+                    setDiscountAmount(amt);
+                    setDiscountModalVisible(false);
+                  }}
+                >
+                  <Text style={{ color: "green", fontWeight: "bold" }}>
+                    Konfirmasi
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
-      </Modal>
-    </ScrollView>
-  );
+        </Modal>
+      </ScrollView>
+    );
+  };
 
   /* ─── CONTAINER ─── */
   return (
@@ -767,176 +961,3 @@ export default function LaundryFormScreen() {
     </View>
   );
 }
-
-/* ---------- STYLE SHEET ---------- */
-const styles = StyleSheet.create({
-  /* STEP HEADER */
-  stepRow: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    paddingVertical: 15,
-    backgroundColor: "#fff",
-    elevation: 2,
-  },
-  stepItem: { alignItems: "center" },
-  stepLabel: { fontSize: 12, marginTop: 4, color: "#bbb" },
-
-  /* INPUTS */
-  input: {
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 12,
-    color: "#000",
-  },
-  numericInput: {
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 12,
-    color: "#000",
-    textAlign: "center",
-  },
-  readonlyInput: {
-    backgroundColor: "#f2f2f2",
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 12,
-    color: "#555",
-  },
-  row: { flexDirection: "row", marginBottom: 12 },
-
-  /* CARD */
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 16,
-    elevation: 1,
-  },
-  cardTitle: { fontWeight: "bold", marginBottom: 12, fontSize: 16 },
-
-  /* BUTTON */
-  btnNext: {
-    backgroundColor: "#007AFF",
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-    marginTop: 16,
-  },
-  btnTxt: { color: "#fff", fontWeight: "600", fontSize: 16 },
-
-  /* TOTAL */
-  totalContainer: {
-    backgroundColor: "#fff",
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-
-  /* PAYMENT */
-  paymentOption: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#ccc",
-    marginBottom: 10,
-  },
-  paymentOptionSelected: {
-    borderColor: "#007AFF",
-    backgroundColor: "#EAF4FF",
-  },
-  paymentText: { marginLeft: 10, fontSize: 16 },
-
-  /* AUTOCOMPLETE */
-  autoWrap: { position: "relative", marginBottom: 12 },
-  autoList: {
-    position: "absolute",
-    top: 52,
-    left: 0,
-    right: 0,
-    maxHeight: 200,
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    elevation: 2,
-    zIndex: 20,
-  },
-  autoItem: {
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-  },
-
-  /* REVIEW BLUE CARD */
-  cardBlue: {
-    backgroundColor: "#007AFF",
-    borderRadius: 12,
-    padding: 16,
-    marginVertical: 16,
-  },
-  btnDiscount: {
-    marginTop: 12,
-    backgroundColor: "#28A745",
-    padding: 10,
-    borderRadius: 8,
-    alignSelf: "flex-end",
-  },
-  detailRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 6,
-  },
-  detailLabel: { color: "#fff", fontWeight: "bold" },
-  detailValue: { color: "#fff", fontWeight: "bold" },
-
-  /* MODAL */
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalContent: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 20,
-    width: "80%",
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    textAlign: "center",
-  },
-  radioRow: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    marginVertical: 12,
-  },
-  radio: {
-    flex: 1,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 8,
-    marginHorizontal: 4,
-    alignItems: "center",
-  },
-  radioActive: {
-    flex: 1,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "#007AFF",
-    backgroundColor: "#EAF4FF",
-    borderRadius: 8,
-    marginHorizontal: 4,
-    alignItems: "center",
-  },
-  modalActions: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 16,
-  },
-});
