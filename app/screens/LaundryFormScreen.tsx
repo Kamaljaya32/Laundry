@@ -75,7 +75,8 @@ export default function LaundryFormScreen() {
   );
   const [discountInput, setDiscountInput] = useState<string>("0");
   const [discountAmount, setDiscountAmount] = useState<number>(0);
-  const [isDiscountModalVisible, setDiscountModalVisible] = useState(false);
+  const [isDiscountModalVisible, setDiscountModalVisible] =
+    useState<boolean>(false);
 
   /* ─── LOAD FIRESTORE DATA ─── */
   useEffect(() => {
@@ -120,7 +121,9 @@ export default function LaundryFormScreen() {
   );
   const totalAfterDiscount = Math.max(0, totalHarga - discountAmount);
   const roundedCashTotal =
-    pay === "cash" ? Math.ceil(totalAfterDiscount / 1000) * 1000 : totalAfterDiscount;
+    pay === "cash"
+      ? Math.ceil(totalAfterDiscount / 1000) * 1000
+      : totalAfterDiscount;
 
   /* ─── HELPERS ─── */
   const addService = () =>
@@ -309,6 +312,12 @@ export default function LaundryFormScreen() {
       UTI: ".pdf",
       mimeType: "application/pdf",
     });
+  };
+
+  /* ─── CETAK STRUK OWNER (BARU) ─── */
+  const printOwnerReceipt = async () => {
+    // Ganti logika di sini jika sudah terhubung ke printer.
+    Alert.alert("Cetak Struk Owner", "Perintah cetak berhasil dijalankan!");
   };
 
   /* ─── STEP 0 : Laundry ─── */
@@ -637,11 +646,19 @@ export default function LaundryFormScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* ===== BUTTONS ===== */}
       <TouchableOpacity
         style={[styles.btnNext, { marginTop: 20 }]}
         onPress={exportToPdf}
       >
         <Text style={styles.btnTxt}>Simpan ke PDF</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.btnNext, { marginTop: 12, backgroundColor: "#28A745" }]}
+        onPress={printOwnerReceipt}
+      >
+        <Text style={styles.btnTxt}>Cetak Struk Owner</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -721,6 +738,7 @@ export default function LaundryFormScreen() {
   /* ─── CONTAINER ─── */
   return (
     <View style={{ flex: 1, backgroundColor: "#F6FCFF" }}>
+      {/* HEADER STEP */}
       <View style={styles.stepRow}>
         {["bag-add-outline", "wallet", "checkmark-done"].map((ic, i) => (
           <View key={ic} style={styles.stepItem}>
