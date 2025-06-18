@@ -1,196 +1,135 @@
 import React from 'react';
-import {
-  Alert,
-  Platform,
-  View,
-  TouchableOpacity,
-  Text,
-  StyleSheet,
-} from 'react-native';
+import { Alert, Platform, View, TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { BluetoothEscposPrinter } from 'react-native-bluetooth-escpos-printer';
 import { Timestamp } from 'firebase/firestore';
 
-/* ──────────────── UTIL ──────────────── */
-const formatDate = (timestamp: Timestamp | string | undefined) => {
-  if (!timestamp) return '-';
-  try {
-    const date =
-      timestamp instanceof Timestamp ? timestamp.toDate() : new Date(timestamp);
-    return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
-  } catch {
-    return '-';
-  }
+/* ───────── UTIL ───────── */
+const safe = (v: any): string =>
+  v === undefined || v === null ? '-' : String(v);
+
+const formatDate = (ts?: Timestamp | Date | string | null) => {
+  if (!ts) return '-';
+  const d =
+    ts instanceof Timestamp ? ts.toDate() :
+    ts instanceof Date       ? ts :
+    new Date(ts);
+  return d.toLocaleString('id-ID');
 };
 
-const formatNumber = (value: string | number) => {
-  const number = typeof value === 'string' ? parseFloat(value) : value;
-  return `Rp${(number || 0).toLocaleString('id-ID')}`;
+const toNumber = (v: any) => {
+  const n = typeof v === 'string' ? parseFloat(v) : Number(v);
+  return Number.isFinite(n) ? n : 0;
 };
+const formatCurrency = (v: any) =>
+  `Rp${toNumber(v).toLocaleString('id-ID')}`;
 
-/* ───────────── CETAK UNTUK CUSTOMER ───────────── */
-export const printReceipt = async (orderData: any) => {
+/* ───────── CETAK CUSTOMER ───────── */
+export const printReceipt = async (order: any) => {
   if (Platform.OS === 'ios') {
-    Alert.alert(
-      'iOS Warning',
-      'iOS tidak mendukung cetak struk dari metode ini.',
-      [{ text: 'OK' }],
-    );
+    Alert.alert('iOS Warning','Printer ESC/POS tidak didukung di iOS.',[{text:'OK'}]);
     return;
   }
 
   try {
-    const columnWidths = [5, 15, 12];
+    const col = [3, 17, 12]; // Total 32 karakter
 
-    await BluetoothEscposPrinter.printerAlign(
-      BluetoothEscposPrinter.ALIGN.CENTER,
-    );
-    await BluetoothEscposPrinter.printText(
-      '\r\nIFA CELL & LAUNDRY\r\n',
-      { widthtimes: 2, heigthtimes: 2 },
-    );
+    await BluetoothEscposPrinter.printerAlign(BluetoothEscposPrinter.ALIGN.CENTER);
+    await BluetoothEscposPrinter.printText('\r\nIFA CELL & LAUNDRY\r\n', { widthtimes: 1, heigthtimes: 2 });
+    await BluetoothEscposPrinter.printText('Jl. BTP No.18, Tamalanrea\r\nMakassar\r\n', {});
+    await BluetoothEscposPrinter.printText('================================\r\n', {}); // 32 "="
+
+    // HEADER
+    const headerFields = [
+      ['Order ID:', safe(order.orderNumber)],
+      ['Customer:', safe(order.customerName)],
+      ['No.Telp:', safe(order.phone)],
+      ['Tgl Masuk:', formatDate(order.inDate)],
+      ['Tgl Keluar:', formatDate(order.outDate)],
+    ];
+    for (const [label, value] of headerFields) {
+      await BluetoothEscposPrinter.printColumn(
+        [12, 20],
+        [0, 0],
+        [label, value],
+        {},
+      );
+    }
+
+    await BluetoothEscposPrinter.printText('================================\r\n', {});
+    await BluetoothEscposPrinter.printText('Layanan\r\n', {});
+
+    // DETAIL ITEM
+    for (const it of order.items ?? []) {
+      await BluetoothEscposPrinter.printColumn(
+        col,
+        [0, 0, 2],
+        [
+          '1x',
+          `${toNumber(it.weight)}${it.unit === 'pcs' ? 'pcs' : 'kg'} ${safe(it.service)}`,
+          formatCurrency(it.price),
+        ],
+        {},
+      );
+      if (it.note) {
+        await BluetoothEscposPrinter.printText(`   cat:${safe(it.note)}\r\n`, {});
+      }
+    }
+
+    await BluetoothEscposPrinter.printText('================================\r\n', {});
+
+    // DISKON & TOTAL
+    if (toNumber(order.discount) > 0) {
+      await BluetoothEscposPrinter.printColumn(
+        [20, 12],
+        [0, 2],
+        ['Diskon', `- ${formatCurrency(order.discount)}`],
+        {},
+      );
+    }
+
     await BluetoothEscposPrinter.printColumn(
-      [30],
-      [BluetoothEscposPrinter.ALIGN.CENTER],
-      [
-        'Jl. Bumi Tamalanrea Permai No.18,\nTamalanrea, Kota Makassar, 90245',
-      ],
+      [20, 12],
+      [0, 2],
+      ['Total', formatCurrency(order.total)],
       {},
     );
-    await BluetoothEscposPrinter.printText('================================\r\n', {});
 
-    /* ---------- DATA PELANGGAN ---------- */
-    await BluetoothEscposPrinter.printColumn([15, 15], [0, 2], ['Customer', orderData.customerName], {});
-    await BluetoothEscposPrinter.printColumn([15, 15], [0, 2], ['Telp', orderData.phone || '-'], {});
-    await BluetoothEscposPrinter.printColumn([15, 15], [0, 2], ['Tanggal Masuk', formatDate(orderData.inDate)], {});
-    await BluetoothEscposPrinter.printColumn([15, 15], [0, 2], ['Tanggal Keluar', formatDate(orderData.outDate)], {});
-
-    /* ---------- LIST ITEM ---------- */
-    await BluetoothEscposPrinter.printText('================================\r\n', {});
-    await BluetoothEscposPrinter.printText('Pesanan:\r\n', { widthtimes: 1 });
-
-    for (const item of orderData.items || []) {
-      const service = item.service;
-      const weight  = parseFloat(item.weight || '0');
-      const price   = parseFloat(item.price  || '0');
-      const note    = item.note || '';
-
-      const line = `${weight}kg ${service}`;
-      await BluetoothEscposPrinter.printColumn(
-        columnWidths,
-        [0, 0, 2],
-        ['1x', line, formatNumber(price)],
-        {},
-      );
-      if (note) await BluetoothEscposPrinter.printText(`  - ${note}\r\n`, {});
-    }
-
-    /* ---------- TOTAL ---------- */
-    await BluetoothEscposPrinter.printText('================================\r\n', {});
-    const subtotal = (orderData.total || 0) + (orderData.discount || 0);
-    await BluetoothEscposPrinter.printColumn([15, 15], [0, 2], ['Subtotal', formatNumber(subtotal)], {});
-
-    if (orderData.discount && orderData.discount > 0) {
-      await BluetoothEscposPrinter.printColumn([15, 15], [0, 2], ['Diskon', formatNumber(orderData.discount)], {});
-    }
-
-    await BluetoothEscposPrinter.printColumn([15, 15], [0, 2], ['Total', formatNumber(orderData.total)], {});
-    await BluetoothEscposPrinter.printText(`\nMetode Bayar: ${orderData.payment || '-'}\n`, {});
-
-    await BluetoothEscposPrinter.printText(
-      '\r\nTerima kasih telah menggunakan layanan kami.\r\n\r\n',
-      { widthtimes: 1 },
-    );
-    await BluetoothEscposPrinter.printText('\r\n\r\n\r\n', {});
-  } catch (e: any) {
-    Alert.alert('Error', e.message || 'Terjadi kesalahan saat mencetak.');
+    await BluetoothEscposPrinter.printText(`\nPembayaran: ${safe(order.payment)}\n`, {});
+    await BluetoothEscposPrinter.printText('\r\nTerima kasih!\r\n\r\n\r\n', {});
+  } catch (err: any) {
+    Alert.alert('Print Error', String(err?.message ?? err));
   }
 };
 
-/* ───────────── CETAK SALINAN OWNER ───────────── */
-export const printOwnerReceipt = async (orderData: any) => {
-  if (Platform.OS === 'ios') {
-    Alert.alert(
-      'iOS Warning',
-      'iOS tidak mendukung cetak struk dari metode ini.',
-      [{ text: 'OK' }],
-    );
-    return;
-  }
-
-  try {
-    const columnWidths = [5, 15, 12];
-
-    await BluetoothEscposPrinter.printerAlign(
-      BluetoothEscposPrinter.ALIGN.CENTER,
-    );
-    await BluetoothEscposPrinter.printText(
-      '\r\nSALINAN UNTUK OWNER\r\n',
-      { widthtimes: 1, heigthtimes: 1 },
-    );
-    await BluetoothEscposPrinter.printText(
-      'IFA CELL & LAUNDRY\r\n',
-      { widthtimes: 2, heigthtimes: 2 },
-    );
-    await BluetoothEscposPrinter.printText('================================\r\n', {});
-
-    await BluetoothEscposPrinter.printColumn([15, 15], [0, 2], ['Customer', orderData.customerName], {});
-    await BluetoothEscposPrinter.printColumn([15, 15], [0, 2], ['Telp', orderData.phone || '-'], {});
-    await BluetoothEscposPrinter.printColumn([15, 15], [0, 2], ['Tgl Masuk', formatDate(orderData.inDate)], {});
-    await BluetoothEscposPrinter.printColumn([15, 15], [0, 2], ['Tgl Keluar', formatDate(orderData.outDate)], {});
-
-    await BluetoothEscposPrinter.printText('================================\r\n', {});
-    for (const item of orderData.items || []) {
-      const service = item.service;
-      const weight  = parseFloat(item.weight || '0');
-      const price   = parseFloat(item.price  || '0');
-      const note    = item.note || '';
-
-      const line = `${weight}kg ${service}`;
-      await BluetoothEscposPrinter.printColumn(
-        columnWidths,
-        [0, 0, 2],
-        ['1x', line, formatNumber(price)],
-        {},
-      );
-      if (note) await BluetoothEscposPrinter.printText(`  - ${note}\r\n`, {});
-    }
-
-    await BluetoothEscposPrinter.printText('================================\r\n', {});
-    await BluetoothEscposPrinter.printColumn([15, 15], [0, 2], ['Total', formatNumber(orderData.total)], {});
-    await BluetoothEscposPrinter.printText('\r\nDicetak oleh sistem Laundry\r\n\r\n', { widthtimes: 1 });
-    await BluetoothEscposPrinter.printText('\r\n\r\n\r\n', {});
-  } catch (e: any) {
-    Alert.alert('Error (Owner)', e.message || 'Gagal mencetak salinan owner');
-  }
+/* ───────── CETAK OWNER ───────── (jika ingin salinan) */
+export const printOwnerReceipt = async (order: any) => {
+  /* bisa panggil printReceipt(order) dengan layout berbeda bila perlu */
+  await printReceipt(order);
 };
 
-/* ───────────── WRAPPER COMPONENT (DEFAULT EXPORT) ───────────── */
-type SamplePrintProps = {
-  /** Data pesanan yang akan dicetak. */
-  orderData?: any;
-};
+/* ───────── WRAPPER UI ───────── */
+type Props = { orderData?: any };
 
-const SamplePrint: React.FC<SamplePrintProps> = ({ orderData }) => {
-  if (!orderData)
+const SamplePrint: React.FC<Props> = ({ orderData }) => {
+  if (!orderData) {
     return (
       <View style={styles.container}>
-        <Text style={styles.notice}>Data pesanan belum tersedia</Text>
+        <Text style={styles.notice}>Data pesanan belum tersedia.</Text>
       </View>
     );
+  }
 
   return (
     <View style={styles.container}>
-      {/* === BUTTON CETAK CUSTOMER === */}
       <TouchableOpacity
-        style={[styles.button, { backgroundColor: '#007BFF' }]}
+        style={[styles.button,{backgroundColor:'#007AFF'}]}
         onPress={() => printReceipt(orderData)}
       >
         <Text style={styles.btnText}>Cetak Struk Customer</Text>
       </TouchableOpacity>
 
-      {/* === BUTTON CETAK OWNER === */}
       <TouchableOpacity
-        style={[styles.button, { backgroundColor: '#47BF34' }]}
+        style={[styles.button,{backgroundColor:'#28A745',marginTop:8}]}
         onPress={() => printOwnerReceipt(orderData)}
       >
         <Text style={styles.btnText}>Cetak Struk Owner</Text>
@@ -201,30 +140,10 @@ const SamplePrint: React.FC<SamplePrintProps> = ({ orderData }) => {
 
 export default SamplePrint;
 
-/* ──────────────── STYLE ──────────────── */
+/* ───────── STYLE ───────── */
 const styles = StyleSheet.create({
-  container: {
-    marginVertical: 8,
-    alignItems: 'center',
-    gap: 8,
-  },
-  button: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-    marginTop: 16,
-    alignSelf: "stretch"
-  },
-  btnText: {
-    textAlign: 'center',
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 16,
-  },
-  notice: {
-    fontStyle: 'italic',
-    color: '#777',
-  },
+  container:{alignItems:'center',marginTop:16},
+  button:{borderRadius:12,paddingVertical:14,paddingHorizontal:24,alignSelf:'stretch',justifyContent:'center',alignItems:'center'},
+  btnText:{color:'#fff',fontWeight:'600',fontSize:15},
+  notice:{fontStyle:'italic',color:'#777'},
 });
