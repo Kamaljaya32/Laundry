@@ -740,6 +740,7 @@ export default function LaundryFormScreen() {
   /* ─── STEP 2 : Review ─── */
   const renderReviewStep = () => {
     const orderData = {
+      orderNumber: orderId,
       customerName: selectedCust?.name,
       phone: selectedCust?.phone,
       inDate,
@@ -747,7 +748,7 @@ export default function LaundryFormScreen() {
       items,
       total: roundedCashTotal,
       discount: discountAmount,
-      payment: pay,
+      payment: pay
     };
     return (
       /* objek yang akan dikirim ke komponen SamplePrint */
