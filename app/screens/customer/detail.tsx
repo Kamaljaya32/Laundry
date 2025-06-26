@@ -7,6 +7,8 @@ import {
   ScrollView,
   ActivityIndicator,
   TouchableOpacity,
+  Modal,
+  TextInput,
 } from "react-native";
 import {
   doc,
@@ -15,6 +17,8 @@ import {
   query,
   where,
   getDocs,
+  updateDoc,
+  increment,
 } from "firebase/firestore";
 import { auth, db } from "../../../config/private-config/config/firebaseConfig";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -25,6 +29,8 @@ interface Cust {
   name: string;
   phone: string;
   totalOrders: number;
+  isMember?: boolean;
+  depositBalance?: number;
 }
 
 interface Order {
@@ -33,7 +39,7 @@ interface Order {
   inDate: any;
   outDate: any;
   total: number;
-  payment: "cash" | "qris" | "transfer";
+  payment: "cash" | "qris" | "transfer" | "deposit";
 }
 
 export default function CustomerDetail() {
@@ -45,6 +51,12 @@ export default function CustomerDetail() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Modal Top-Up
+  const [isModalVisible, setModalVisible] = useState(false);
+  const [topupValue, setTopupValue] = useState("");
+  const [updating, setUpdating] = useState(false);
+
+  // Fetch customer
   useEffect(() => {
     if (!id) return;
     (async () => {
@@ -52,17 +64,18 @@ export default function CustomerDetail() {
         const snap = await getDoc(doc(db, "customers", id));
         if (!snap.exists()) {
           Alert.alert("Error", "Customer tidak ditemukan");
-          router.back();
-          return;
+          return router.back();
         }
         setCust(snap.data() as Cust);
       } catch (e) {
-        console.error("[CustomerDetail] get customer failed:", e);
+        console.error("get customer failed:", e);
         Alert.alert("Error", String(e));
+        router.back();
       }
     })();
   }, [id]);
 
+  // Fetch orders
   useEffect(() => {
     if (!id || !uid) return;
     (async () => {
@@ -73,18 +86,48 @@ export default function CustomerDetail() {
           where("ownerId", "==", uid)
         );
         const snap = await getDocs(q);
-        const list: Order[] = snap.docs.map(
-          (d) => ({ id: d.id, ...d.data() } as Order)
-        );
+        const list = snap.docs.map((d) => {
+          const data = d.data() as Omit<Order, "id">;
+          return { id: d.id, ...data };
+        });
         setOrders(list.sort((a, b) => b.orderNumber - a.orderNumber));
       } catch (e) {
-        console.error("[CustomerDetail] get orders failed:", e);
+        console.error("get orders failed:", e);
         Alert.alert("Error", String(e));
       } finally {
         setLoading(false);
       }
     })();
   }, [id, uid]);
+
+  // Handle top-up deposit
+  const handleTopUp = async () => {
+    const amt = parseInt(topupValue, 10);
+    if (isNaN(amt) || amt <= 0) {
+      return Alert.alert("Error", "Masukkan jumlah top-up yang valid");
+    }
+    setUpdating(true);
+    try {
+      await updateDoc(doc(db, "customers", id!), {
+        depositBalance: increment(amt),
+        isMember: true,
+      });
+      setCust(
+        (prev) =>
+          prev && {
+            ...prev,
+            depositBalance: (prev.depositBalance || 0) + amt,
+            isMember: true,
+          }
+      );
+      setTopupValue("");
+      setModalVisible(false);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Gagal top-up");
+    } finally {
+      setUpdating(false);
+    }
+  };
 
   if (!cust || loading) {
     return (
@@ -95,16 +138,10 @@ export default function CustomerDetail() {
   }
 
   return (
-    <ScrollView
-      contentContainerStyle={{ padding: 20, backgroundColor: "#F9FAFB" }}
-    >
-      {/* Back button */}
+    <ScrollView contentContainerStyle={s.container}>
+      {/* Back */}
       <TouchableOpacity
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          marginBottom: 20,
-        }}
+        style={{ flexDirection: "row", alignItems: "center", marginBottom: 20 }}
         onPress={() => router.back()}
       >
         <Ionicons name="arrow-back" size={24} color="#007AFF" />
@@ -113,117 +150,123 @@ export default function CustomerDetail() {
         </Text>
       </TouchableOpacity>
 
-      {/* Customer Profile */}
+      {/* Profile */}
+      <Text style={s.label}>Nama</Text>
+      <Text style={s.value}>{cust.name}</Text>
+      <Text style={s.label}>Telepon</Text>
+      <Text style={s.value}>{cust.phone}</Text>
+
+      {/* Badges */}
+      <View style={s.badge}>
+        <Ionicons name="cart-outline" size={16} color="#0066FF" />
+        <Text style={s.badgeTxt}> {cust.totalOrders} Order</Text>
+      </View>
+      {cust.isMember && (
+        <View style={[s.badge, { marginTop: 8 }]}>
+          <Ionicons name="ribbon-outline" size={16} color="#28A745" />
+          <Text style={[s.badgeTxt, { color: "#28A745" }]}> Member</Text>
+        </View>
+      )}
+
+      {/* Deposit */}
       <View
         style={{
-          backgroundColor: "white",
-          padding: 16,
-          borderRadius: 12,
-          shadowColor: "#000",
-          shadowOpacity: 0.1,
-          shadowRadius: 6,
-          elevation: 3,
-          marginBottom: 20,
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginTop: 16,
         }}
       >
-        <Text style={{ fontSize: 16, color: "#888", marginBottom: 4 }}>
-          Nama
-        </Text>
-        <Text style={{ fontSize: 18, fontWeight: "bold", marginBottom: 12 }}>
-          {cust.name}
-        </Text>
-
-        <Text style={{ fontSize: 16, color: "#888", marginBottom: 4 }}>
-          Telepon
-        </Text>
-        <Text style={{ fontSize: 16, marginBottom: 12 }}>{cust.phone}</Text>
-
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            backgroundColor: "#EAF2FF",
-            paddingVertical: 6,
-            paddingHorizontal: 12,
-            borderRadius: 20,
-            alignSelf: "flex-start",
-          }}
-        >
-          <Ionicons
-            name="cart-outline"
-            size={16}
-            color="#0066FF"
-            style={{ marginRight: 6 }}
-          />
-          <Text style={{ color: "#0066FF", fontWeight: "600" }}>
-            {cust.totalOrders} Order
+        <View>
+          <Text style={s.label}>Saldo Deposit</Text>
+          <Text style={s.value}>
+            Rp {(cust.depositBalance || 0).toLocaleString("id-ID")}
           </Text>
         </View>
+        <TouchableOpacity style={s.badge} onPress={() => setModalVisible(true)}>
+          <Ionicons name="wallet-outline" size={16} color="#0066FF" />
+          <Text style={s.badgeTxt}> Top-Up</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Order History */}
-      <Text style={{ fontSize: 18, fontWeight: "bold", marginBottom: 12 }}>
-        Riwayat Pesanan
-      </Text>
-
+      {/* Order history */}
+      <Text style={[s.label, { marginTop: 24 }]}>Riwayat Pesanan</Text>
       {orders.length === 0 ? (
-        <Text style={{ color: "#999", fontStyle: "italic" }}>
-          Belum ada pesanan.
-        </Text>
+        <Text style={s.emptyText}>Belum ada pesanan.</Text>
       ) : (
         orders.map((o) => (
-          <View
-            key={o.id}
-            style={{
-              backgroundColor: "white",
-              padding: 16,
-              borderRadius: 12,
-              shadowColor: "#000",
-              shadowOpacity: 0.05,
-              shadowRadius: 4,
-              elevation: 2,
-              marginBottom: 16,
-            }}
-          >
-            <TextRow label="No. Pesanan" value={String(o.orderNumber)} />
-            <TextRow
-              label="Tanggal Masuk"
-              value={new Date(o.inDate.seconds * 1000).toLocaleDateString()}
-            />
-            <TextRow
-              label="Tanggal Keluar"
-              value={new Date(o.outDate.seconds * 1000).toLocaleDateString()}
-            />
-            <TextRow
-              label="Total"
-              value={`Rp ${o.total.toLocaleString("id-ID")}`}
-            />
-            <TextRow label="Pembayaran" value={formatPayment(o.payment)} />
+          <View key={o.id} style={s.orderCard}>
+            <View style={s.orderRow}>
+              <Text style={s.orderKey}>No. Pesanan</Text>
+              <Text style={s.orderVal}>{o.orderNumber}</Text>
+            </View>
+            <View style={s.orderRow}>
+              <Text style={s.orderKey}>Tanggal Masuk</Text>
+              <Text style={s.orderVal}>
+                {new Date(o.inDate.seconds * 1000).toLocaleDateString()}
+              </Text>
+            </View>
+            <View style={s.orderRow}>
+              <Text style={s.orderKey}>Tanggal Keluar</Text>
+              <Text style={s.orderVal}>
+                {new Date(o.outDate.seconds * 1000).toLocaleDateString()}
+              </Text>
+            </View>
+            <View style={s.orderRow}>
+              <Text style={s.orderKey}>Total</Text>
+              <Text style={s.orderVal}>
+                Rp {o.total.toLocaleString("id-ID")}
+              </Text>
+            </View>
+            <View style={s.orderRow}>
+              <Text style={s.orderKey}>Pembayaran</Text>
+              <Text style={s.orderVal}>
+                {o.payment === "deposit"
+                  ? "Deposit"
+                  : o.payment === "cash"
+                  ? "Cash"
+                  : o.payment === "qris"
+                  ? "QRIS"
+                  : "Transfer"}
+              </Text>
+            </View>
           </View>
         ))
       )}
+
+      {/* Top-Up Modal */}
+      <Modal
+        visible={isModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={s.modalOverlay}>
+          <View style={s.modalContent}>
+            <Text style={s.modalTitle}>Top-Up Deposit</Text>
+            <TextInput
+              style={s.input}
+              placeholder="Masukkan jumlah Rp"
+              keyboardType="numeric"
+              value={topupValue}
+              onChangeText={setTopupValue}
+            />
+            <View style={{ flexDirection: "row", justifyContent: "flex-end" }}>
+              <TouchableOpacity
+                onPress={() => setModalVisible(false)}
+                style={{ marginRight: 16 }}
+              >
+                <Text style={{ color: "red", fontWeight: "600" }}>Batal</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleTopUp} disabled={updating}>
+                <Text style={{ color: "#0066FF", fontWeight: "600" }}>
+                  {updating ? "Memproses…" : "Konfirmasi"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
-}
-
-/* Komponen bantu */
-function TextRow({ label, value }: { label: string; value: string }) {
-  return (
-    <View
-      style={{
-        flexDirection: "row",
-        justifyContent: "space-between",
-        marginBottom: 8,
-      }}
-    >
-      <Text style={{ fontSize: 14, color: "#555" }}>{label}</Text>
-      <Text style={{ fontSize: 14, fontWeight: "600" }}>{value}</Text>
-    </View>
-  );
-}
-
-function formatPayment(p: "cash" | "qris" | "transfer") {
-  if (p === "cash") return "Cash";
-  if (p === "qris") return "QRIS";
-  return "Transfer";
 }
