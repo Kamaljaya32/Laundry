@@ -19,6 +19,7 @@ import {
   onSnapshot,
   doc,
   setDoc,
+  getDocs,
   updateDoc,
   serverTimestamp,
   increment,
@@ -31,7 +32,7 @@ import SamplePrint from "./setting/SamplePrint";
 
 /* ───────────────────────────── TYPES ───────────────────────────── */
 type Step = 0 | 1 | 2;
-type PayMethod = "cash" | "qris" | "transfer" | "unpaid";
+type PayMethod = "cash" | "qris" | "transfer" | "deposit" | "unpaid";
 
 interface LaundryItem {
   service: string;
@@ -44,6 +45,16 @@ interface CustomerInfo {
   id: string;
   name: string;
   phone: string;
+  isMember?: boolean;
+  depositBalance?: number;
+}
+
+interface SellItem {
+  id: string;
+  name: string;
+  stock: number;
+  price: number;
+  qty: string;
 }
 
 /* ---------- STYLE SHEET ---------- */
@@ -225,6 +236,9 @@ export default function LaundryFormScreen() {
   const [step, setStep] = useState<Step>(0);
   const [orderId, setOrderId] = useState<number | null>(null);
 
+  const [sellItems, setSellItems] = useState<SellItem[]>([]);
+  const [inventorySellList, setInventorySellList] = useState<SellItem[]>([]);
+
   const [phoneText, setPhoneText] = useState("");
   const [customers, setCustomers] = useState<CustomerInfo[]>([]);
   const [selectedCust, setSelectedCust] = useState<CustomerInfo | null>(null);
@@ -260,9 +274,42 @@ export default function LaundryFormScreen() {
       query(collection(db, "customers"), where("ownerId", "==", u.uid)),
       (snap) =>
         setCustomers(
-          snap.docs.map((d) => ({ id: d.id, ...d.data() } as CustomerInfo))
+          snap.docs.map((d) => {
+            const data = d.data() as any;
+            return {
+              id: d.id,
+              name: data.name,
+              phone: data.phone,
+              isMember: data.isMember ?? false,
+              depositBalance: data.depositBalance ?? 0,
+            } as CustomerInfo;
+          })
         )
     );
+  }, []);
+
+  useEffect(() => {
+    const u = auth.currentUser;
+    if (!u) return;
+    const q = query(
+      collection(db, "inventory"),
+      where("ownerId", "==", u.uid),
+      where("isSellable", "==", true)
+    );
+    return onSnapshot(q, (snap) => {
+      setInventorySellList(
+        snap.docs.map((d) => {
+          const data = d.data() as any;
+          return {
+            id: d.id,
+            name: data.name,
+            stock: data.stock,
+            price: data.price || 0,
+            qty: "0",
+          };
+        })
+      );
+    });
   }, []);
 
   useEffect(() => {
@@ -290,6 +337,18 @@ export default function LaundryFormScreen() {
     c.phone.includes(phoneText.trim())
   );
   const totalHarga = items.reduce((s, it) => s + +it.weight * +it.price, 0);
+  // total harga barang jualan
+  const totalSell = inventorySellList.reduce(
+    (sum, it) =>
+      sum +
+      parseFloat(it.price?.toString() || "0") *
+        (parseInt(it.qty || "0", 10) || 0),
+    0
+  );
+
+  // grand total = layanan + barang – diskon
+  const grandTotal = totalHarga + totalSell - discountAmount;
+
   const totalAfterDiscount = Math.max(0, totalHarga - discountAmount);
   const roundedCashTotal =
     pay === "cash"
@@ -343,8 +402,12 @@ export default function LaundryFormScreen() {
     if (!selectedCust)
       return Alert.alert("Perhatian", "Pilih pelanggan dahulu!");
     if (!orderId) return Alert.alert("Perhatian", "ID pesanan belum dibuat.");
+    // (Opsional) cek saldo deposit
+    if (pay === "deposit" && (selectedCust.depositBalance ?? 0) < grandTotal) {
+      return alert("Saldo deposit tidak mencukupi!");
+    }
     try {
-      const total = roundedCashTotal;
+      const total = grandTotal;
 
       /* ORDERS */
       await setDoc(doc(db, "orders", orderId.toString()), {
@@ -386,6 +449,26 @@ export default function LaundryFormScreen() {
       await updateDoc(doc(db, "customers", selectedCust.id), {
         totalOrders: increment(1),
       });
+
+      // d. potong deposit pelanggan jika perlu
+      if (pay === "deposit") {
+        await updateDoc(doc(db, "customers", selectedCust.id), {
+          depositBalance: increment(-grandTotal),
+        });
+      }
+
+      /* e. update stok inventory */
+      const sold = inventorySellList
+        .map((it) => ({ id: it.id, qty: parseInt(it.qty, 10) || 0 }))
+        .filter((it) => it.qty > 0);
+
+      await Promise.all(
+        sold.map((it) =>
+          updateDoc(doc(db, "inventory", it.id), {
+            stock: increment(-it.qty),
+          })
+        )
+      );
 
       Alert.alert("Berhasil", "Pesanan tersimpan.");
 
@@ -470,7 +553,9 @@ export default function LaundryFormScreen() {
         </tfoot>
       </table>
       <p><b>Pembayaran:</b> ${
-        pay === "cash"
+        pay === "deposit"
+          ? "Deposit"
+          : pay === "cash"
           ? "Cash"
           : pay === "qris"
           ? "QRIS"
@@ -516,7 +601,11 @@ export default function LaundryFormScreen() {
           returnKeyType="done"
         />
         {!selectedCust && phoneText.length > 0 && (
-          <ScrollView style={styles.autoList}>
+          <ScrollView
+            style={styles.autoList}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled={true}
+          >
             {filteredCust.map((c) => (
               <TouchableOpacity
                 key={c.id}
@@ -586,7 +675,11 @@ export default function LaundryFormScreen() {
               onBlur={() => setTimeout(() => setOpenSvcIdx(null), 150)}
             />
             {openSvcIdx === i && it.service.length > 0 && (
-              <ScrollView style={styles.autoList}>
+              <ScrollView
+                style={styles.autoList}
+                keyboardShouldPersistTaps="handled"
+                nestedScrollEnabled={true}
+              >
                 {serviceOptions
                   .filter((opt) =>
                     opt.toLowerCase().includes(it.service.toLowerCase())
@@ -645,6 +738,103 @@ export default function LaundryFormScreen() {
             onChangeText={(t) => updateItem(i, "note", t)}
           />
 
+          {/* === SECTION BARANG JUALAN === */}
+          <View style={[styles.card, { marginTop: 12 }]}>
+            <Text style={styles.cardTitle}>Item Lain</Text>
+
+            {inventorySellList.map((prod, idx) => {
+              const qtyNum = parseInt(prod.qty, 10) || 0;
+              const lineTotal = prod.price * qtyNum;
+              return (
+                <View
+                  key={prod.id}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    marginBottom: 8,
+                  }}
+                >
+                  {/* 1. Nama Produk (flex 1) */}
+                  <Text
+                    style={{ flex: 1, fontWeight: "600" }}
+                    numberOfLines={1}
+                  >
+                    {prod.name}
+                  </Text>
+
+                  {/* 2. Kontainer scroll horizontal untuk Qty + Subtotal */}
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ flexDirection: "row" }}
+                    style={{ flexShrink: 0 }}
+                  >
+                    {/* Card Qty */}
+                    <View
+                      style={{
+                        backgroundColor: "#fff",
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: "#ccc",
+                        paddingHorizontal: 8,
+                        marginRight: 8,
+                        flexShrink: 0,
+                        justifyContent: "center",
+                      }}
+                    >
+                      <TextInput
+                        style={{ height: 36, textAlign: "center" }}
+                        keyboardType="numeric"
+                        placeholder="0"
+                        value={prod.qty}
+                        onChangeText={(v) => {
+                          const arr = [...inventorySellList];
+                          arr[idx].qty = v.replace(/[^0-9]/g, "");
+                          setInventorySellList(arr);
+                        }}
+                      />
+                    </View>
+
+                    {/* Card Subtotal */}
+                    <View
+                      style={{
+                        backgroundColor: "#fff",
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: "#ccc",
+                        paddingHorizontal: 8,
+                        flexShrink: 0,
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Text style={{ fontWeight: "600" }}>
+                        Rp{lineTotal.toLocaleString()}
+                      </Text>
+                    </View>
+                  </ScrollView>
+                </View>
+              );
+            })}
+
+            {/* Subtotal Barang */}
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                borderTopWidth: 1,
+                borderTopColor: "#ddd",
+                paddingTop: 6,
+                marginTop: 4,
+              }}
+            >
+              <Text style={{ fontWeight: "bold" }}>Subtotal Barang</Text>
+              <Text style={{ fontWeight: "bold" }}>
+                Rp{totalSell.toLocaleString()}
+              </Text>
+            </View>
+          </View>
+          {/* === END SECTION BARANG JUALAN === */}
+
           {i === items.length - 1 && (
             <TouchableOpacity onPress={addService} style={{ marginTop: 8 }}>
               <Text style={{ color: "#007AFF", textAlign: "center" }}>
@@ -659,7 +849,7 @@ export default function LaundryFormScreen() {
       <View style={styles.totalContainer}>
         <Text style={{ fontWeight: "bold" }}>Estimasi Total :</Text>
         <Text style={{ fontWeight: "bold" }}>
-          Rp {totalHarga.toLocaleString("id-ID")}
+          Rp {grandTotal.toLocaleString("id-ID")}
         </Text>
       </View>
 
@@ -693,39 +883,45 @@ export default function LaundryFormScreen() {
         <Text style={{ fontWeight: "bold", marginBottom: 12 }}>
           Metode Pembayaran
         </Text>
-        {(["cash", "qris", "transfer", "unpaid"] as const).map((m) => (
-          <TouchableOpacity
-            key={m}
-            style={[
-              styles.paymentOption,
-              pay === m && styles.paymentOptionSelected,
-            ]}
-            onPress={() => setPay(m)}
-          >
-            <Ionicons
-              name={
-                m === "cash"
-                  ? "cash"
+        {(["cash", "qris", "transfer", "deposit", "unpaid"] as const).map(
+          (m) => (
+            <TouchableOpacity
+              key={m}
+              style={[
+                styles.paymentOption,
+                pay === m && styles.paymentOptionSelected,
+              ]}
+              onPress={() => setPay(m)}
+            >
+              <Ionicons
+                name={
+                  m === "cash"
+                    ? "cash"
+                    : m === "qris"
+                    ? "qr-code-outline"
+                    : m === "transfer"
+                    ? "swap-horizontal-outline"
+                    : m === "deposit"
+                    ? "wallet-outline"
+                    : "alert-circle-outline"
+                }
+                size={20}
+                color="#555"
+              />
+              <Text style={styles.paymentText}>
+                {m === "cash"
+                  ? "Cash"
                   : m === "qris"
-                  ? "qr-code-outline"
+                  ? "QRIS"
                   : m === "transfer"
-                  ? "swap-horizontal-outline"
-                  : "alert-circle-outline"
-              }
-              size={20}
-              color="#555"
-            />
-            <Text style={styles.paymentText}>
-              {m === "cash"
-                ? "Cash"
-                : m === "qris"
-                ? "QRIS"
-                : m === "transfer"
-                ? "Transfer"
-                : "Belum Bayar"}
-            </Text>
-          </TouchableOpacity>
-        ))}
+                  ? "Transfer"
+                  : m === "deposit"
+                  ? "Deposit"
+                  : "Belum Bayar"}
+              </Text>
+            </TouchableOpacity>
+          )
+        )}
       </View>
 
       <TouchableOpacity
@@ -748,7 +944,7 @@ export default function LaundryFormScreen() {
       items,
       total: roundedCashTotal,
       discount: discountAmount,
-      payment: pay
+      payment: pay,
     };
     return (
       /* objek yang akan dikirim ke komponen SamplePrint */
@@ -787,7 +983,8 @@ export default function LaundryFormScreen() {
           {items.map((it, i) => (
             <View key={i} style={{ marginBottom: 8 }}>
               <Text>
-                {it.service} · {it.weight}
+                {it.service} · {it.weight}×Rp
+                {parseFloat(it.price || "0").toLocaleString("id-ID")}
                 {it.unit === "pcs" ? "pcs" : "kg"}×Rp{it.price}
               </Text>
               <Text>
@@ -799,15 +996,55 @@ export default function LaundryFormScreen() {
               {it.note ? <Text>Catatan: {it.note}</Text> : null}
             </View>
           ))}
-          <Text style={{ fontWeight: "bold", marginTop: 8 }}>
-            Total: Rp {totalHarga.toLocaleString("id-ID")}
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Total Layanan</Text>
+            <Text style={styles.detailValue}>
+              Rp {totalHarga.toLocaleString("id-ID")}
+            </Text>
+          </View>
+        </View>
+
+        {/* Barang Terjual (jika ada) */}
+        {inventorySellList.filter((it) => parseInt(it.qty, 10) > 0).length >
+          0 && (
+          <View style={[styles.card, { marginTop: 16 }]}>
+            <Text style={styles.cardTitle}>Detail Item</Text>
+            {inventorySellList
+              .filter((it) => parseInt(it.qty, 10) > 0)
+              .map((it, i) => (
+                <View key={i} style={styles.detailRow}>
+                  <Text>
+                    {it.name} ×{it.qty}
+                  </Text>
+                  <Text>
+                    Rp{" "}
+                    {(it.price * parseInt(it.qty, 10)).toLocaleString("id-ID")}
+                  </Text>
+                </View>
+              ))}
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Total Barang</Text>
+              <Text style={styles.detailValue}>
+                Rp {totalSell.toLocaleString("id-ID")}
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Grand Total */}
+        <View style={[styles.card, { marginTop: 16 }]}>
+          <Text style={styles.cardTitle}>Total Pesanan</Text>
+          <Text style={[styles.detailValue, { fontSize: 18 }]}>
+            Rp {grandTotal.toLocaleString("id-ID")}
           </Text>
         </View>
 
         <View style={[styles.card, { marginTop: 16 }]}>
           <Text style={styles.cardTitle}>Metode Pembayaran</Text>
           <Text>
-            {pay === "cash"
+            {pay === "deposit"
+              ? "Deposit"
+              : pay === "cash"
               ? "Cash"
               : pay === "qris"
               ? "QRIS"
@@ -821,7 +1058,7 @@ export default function LaundryFormScreen() {
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Sisa Bayar</Text>
             <Text style={styles.detailValue}>
-              Rp {roundedCashTotal.toLocaleString("id-ID")}
+              Rp {grandTotal.toLocaleString("id-ID")}
             </Text>
           </View>
           {discountAmount > 0 && (
