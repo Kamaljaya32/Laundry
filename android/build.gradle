@@ -42,10 +42,16 @@ allprojects {
 }
 
 subprojects { sub ->
+  // redirect buildscript.repositories
   sub.buildscript.repositories.all { repo ->
     def url = repo.url.toString()
-    if (url.startsWith('http://jcenter.bintray.com')) {
-      repo.setUrl(uri(url.replace('http://','https://')))
+    if (url.startsWith('http://')) {
+      // 1) coba alihkan ke https
+      def httpsUrl = url.replace('http://', 'https://')
+      repo.setUrl(uri(httpsUrl))
+      // 2) jika repo tsb memang tak punya https, boleh aktifkan baris di bawah
+      //    (tapi kurangi keamanan, jadi pakai hanya bila perlu)
+      // repo.allowInsecureProtocol = true
     }
   }
 }
