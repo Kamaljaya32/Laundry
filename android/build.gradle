@@ -22,16 +22,34 @@ def reactNativeAndroidDir = new File(
 
 allprojects {
   repositories {
-    maven {
-      // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
-      url(reactNativeAndroidDir)
-    }
-
+    // ─── repos inti ─────────────────────────────────────────────
+    maven { url(reactNativeAndroidDir) }      // React Native AAR dari node_modules
     google()
     mavenCentral()
     maven { url 'https://www.jitpack.io' }
+
+    // ─── redirect JCenter HTTP/HTTPS → Maven Central ───────────
+        all { repo ->
+      def u = repo.url.toString()
+      if (u.startsWith('http://jcenter.bintray.com') ||
+          u.startsWith('https://jcenter.bintray.com')) {
+
+        remove repo
+        add mavenCentral()
+      }
+    }
   }
 }
+
+subprojects { sub ->
+  sub.buildscript.repositories.all { repo ->
+    def url = repo.url.toString()
+    if (url.startsWith('http://jcenter.bintray.com')) {
+      repo.setUrl(uri(url.replace('http://','https://')))
+    }
+  }
+}
+
 
 apply plugin: "expo-root-project"
 apply plugin: "com.facebook.react.rootproject"
