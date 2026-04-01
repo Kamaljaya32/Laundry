@@ -37,7 +37,7 @@ Ikuti langkah-langkah berikut untuk menjalankan proyek ini di mesin lokal Anda:
 
 ### Langkah Instalasi
 
-1.  **Kloning Repositori**
+1.  **Clone Repositori**
     ```bash
     git clone [https://github.com/Kamaljaya32/Laundry.git](https://github.com/Kamaljaya32/Laundry.git)
     cd Laundry
