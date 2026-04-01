@@ -1,50 +1,83 @@
-# Welcome to your Expo app 👋
+# 🧺 Laundry POS App
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Sebuah aplikasi seluler *Point of Sale* (POS) yang dirancang khusus untuk mempermudah operasional dan manajemen bisnis laundry. Aplikasi ini memungkinkan pencatatan transaksi yang efisien, manajemen layanan pelanggan, dan pemantauan data secara real-time.
 
-## Get started
+[![React Native](https://img.shields.io/badge/React_Native-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://reactnative.dev/)
+[![Expo](https://img.shields.io/badge/Expo-1B1F23?style=for-the-badge&logo=expo&logoColor=white)](https://expo.dev/)
+[![Firebase](https://img.shields.io/badge/firebase-ffca28?style=for-the-badge&logo=firebase&logoColor=black)](https://firebase.google.com/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
-1. Install dependencies
+---
 
-   ```bash
-   npm install
-   ```
+## ✨ Fitur Utama
 
-2. Start the app
+* **Pencatatan Transaksi:** Mencatat pesanan masuk (kiloan, satuan, atau layanan khusus) dengan kalkulasi harga otomatis.
+* **Manajemen Data Real-time:** Sinkronisasi data pesanan dan pelanggan secara instan menggunakan infrastruktur *cloud*.
+* **Pelacakan Status Pesanan:** Memantau alur kerja laundry dari pesanan diterima, diproses, hingga selesai dan diambil.
+* **Sistem Autentikasi:** Keamanan akses pengguna dan pengelola operasional.
+* **Antarmuka Intuitif:** Desain UI/UX *mobile-first* yang mudah digunakan oleh kasir atau pengelola laundry.
 
-   ```bash
+## 🛠️ Teknologi yang Digunakan
+
+Aplikasi ini dibangun menggunakan tumpukan teknologi modern untuk memastikan performa yang cepat dan pengembangan yang skalabel:
+
+* **Frontend:** React Native dengan [Expo](https://expo.dev/)
+* **Bahasa Pemrograman:** TypeScript & JavaScript
+* **Backend & Database:** Firebase (Authentication, Firestore/Realtime Database)
+* **Navigasi:** Expo Router (File-based routing)
+
+## 📸 Tangkapan Layar (Screenshots)
+
+*(Catatan: Ganti tautan gambar placeholder di bawah ini dengan tautan gambar asli aplikasi Anda setelah diunggah ke repositori)*
+
+| Halaman Utama | Tambah Pesanan | Daftar Transaksi |
+| :---: | :---: | :---: |
+| <img src="https://via.placeholder.com/250x500.png?text=Home+Screen" width="200"> | <img src="https://via.placeholder.com/250x500.png?text=Add+Order" width="200"> | <img src="https://via.placeholder.com/250x500.png?text=Transactions" width="200"> |
+
+## 🚀 Panduan Instalasi (Getting Started)
+
+Ikuti langkah-langkah berikut untuk menjalankan proyek ini di mesin lokal Anda:
+
+### Prasyarat
+* Node.js telah terinstal
+* Akun Expo (opsional, untuk pengujian di perangkat fisik)
+* Proyek Firebase yang sudah dikonfigurasi
+
+### Langkah Instalasi
+
+1.  **Kloning Repositori**
+    ```bash
+    git clone [https://github.com/Kamaljaya32/Laundry.git](https://github.com/Kamaljaya32/Laundry.git)
+    cd Laundry
+    ```
+
+2.  **Instalasi Dependensi**
+    ```bash
+    npm install
+    ```
+
+3.  **Konfigurasi Firebase**
+    * Buka file `firebaseConfig.js` (atau buat jika belum ada).
+    * Masukkan kredensial konfigurasi Firebase Anda (API Key, Auth Domain, Project ID, dll).
+
+4.  **Jalankan Aplikasi**
+    ```bash
     npx expo start
-   ```
+    ```
 
-In the output, you'll find options to open the app in a
+5.  **Uji Coba**
+    * Tekan `a` untuk membuka di Android Emulator.
+    * Tekan `i` untuk membuka di iOS Simulator.
+    * Pindai kode QR menggunakan aplikasi **Expo Go** (Android/iOS) untuk mencoba di perangkat fisik Anda.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## 📂 Struktur Proyek
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```text
+Laundry/
+├── app/                  # File-based routing untuk halaman (UI)
+├── assets/               # Gambar, ikon, dan font
+├── config/               # Konfigurasi aplikasi (seperti tema)
+├── constants/            # Variabel konstan yang digunakan di seluruh aplikasi
+├── hooks/                # Custom React Hooks
+├── firebaseConfig.js     # Konfigurasi koneksi ke Firebase
+└── package.json          # Dependensi dan skrip proyek
