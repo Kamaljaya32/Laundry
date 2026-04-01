@@ -26,14 +26,6 @@ Aplikasi ini dibangun menggunakan tumpukan teknologi modern untuk memastikan per
 * **Backend & Database:** Firebase (Authentication, Firestore/Realtime Database)
 * **Navigasi:** Expo Router (File-based routing)
 
-## 📸 Tangkapan Layar (Screenshots)
-
-*(Catatan: Ganti tautan gambar placeholder di bawah ini dengan tautan gambar asli aplikasi Anda setelah diunggah ke repositori)*
-
-| Halaman Utama | Tambah Pesanan | Daftar Transaksi |
-| :---: | :---: | :---: |
-| <img src="https://via.placeholder.com/250x500.png?text=Home+Screen" width="200"> | <img src="https://via.placeholder.com/250x500.png?text=Add+Order" width="200"> | <img src="https://via.placeholder.com/250x500.png?text=Transactions" width="200"> |
-
 ## 🚀 Panduan Instalasi (Getting Started)
 
 Ikuti langkah-langkah berikut untuk menjalankan proyek ini di mesin lokal Anda:
